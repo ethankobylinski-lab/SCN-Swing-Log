@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { DataContext } from '../contexts/DataContext';
 import { Dashboard } from './Dashboard';
 import { HomeIcon } from './icons/HomeIcon';
@@ -9,11 +9,19 @@ import { Player, Team, Drill, Session, DayOfWeek, TargetZone, PitchType, CountSi
 import { AnalyticsCharts } from './AnalyticsCharts';
 import { Modal } from './Modal';
 import { TARGET_ZONES, PITCH_TYPES, COUNT_SITUATIONS, BASE_RUNNERS, OUTS_OPTIONS, GOAL_TYPES, DRILL_TYPES } from '../constants';
-import { formatDate, calculateExecutionPercentage, getSessionGoalProgress, calculateHardHitPercentage } from '../utils/helpers';
+import {
+    formatDate,
+    calculateExecutionPercentage,
+    getSessionGoalProgress,
+    calculateHardHitPercentage,
+    buildExecutionTrend,
+    buildDrillSuccessData,
+    buildHardHitTrend,
+} from '../utils/helpers';
 import { Avatar } from './Avatar';
 
 const CoachDashboard: React.FC<{ players: Player[], drills: Drill[], sessions: Session[], team: Team }> = ({ players, drills, sessions, team }) => {
-    
+
     const teamExecutionPct = useMemo(() => {
         const allSets = sessions.flatMap(s => s.sets);
         return calculateExecutionPercentage(allSets);
@@ -21,6 +29,7 @@ const CoachDashboard: React.FC<{ players: Player[], drills: Drill[], sessions: S
 
     const recentSessions = useMemo(() => {
         return sessions
+            .slice()
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .slice(0, 5);
     }, [sessions]);
@@ -56,10 +65,10 @@ const CoachDashboard: React.FC<{ players: Player[], drills: Drill[], sessions: S
                         const player = players.find(p => p.id === session.playerId);
                         const drill = drills.find(d => d.id === session.drillId);
                         if (!player) return null;
-                        
+
                         const progress = drill ? getSessionGoalProgress(session, drill) : { value: calculateExecutionPercentage(session.sets), isSuccess: calculateExecutionPercentage(session.sets) > 70 };
                         const goalType = drill ? drill.goalType : 'Execution %';
-                        
+
                         return (
                             <li key={session.id} className="py-3 flex justify-between items-center">
                                 <div>
@@ -67,7 +76,7 @@ const CoachDashboard: React.FC<{ players: Player[], drills: Drill[], sessions: S
                                     <p className="text-sm text-gray-500 dark:text-gray-400">{formatDate(session.date)}</p>
                                 </div>
                                  <div className={`px-3 py-1 text-sm font-semibold rounded-full ${progress.isSuccess ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`}>
-                                    {goalType}: {progress.value}%
+                                    {goalType}: {progress.value}{goalType.includes('%') ? '%' : ''}
                                 </div>
                             </li>
                         )
@@ -80,7 +89,7 @@ const CoachDashboard: React.FC<{ players: Player[], drills: Drill[], sessions: S
 };
 
 const PlayerList: React.FC<{ players: Player[], sessionsByPlayer: Record<string, Session[]>, onPlayerClick: (player: Player) => void }> = ({ players, sessionsByPlayer, onPlayerClick }) => {
-    
+
     const sortedPlayers = useMemo(() => {
         return [...players].sort((a, b) => {
             const sessionsA = sessionsByPlayer[a.id]?.length || 0;
@@ -88,7 +97,7 @@ const PlayerList: React.FC<{ players: Player[], sessionsByPlayer: Record<string,
             return sessionsB - sessionsA; // Sort by most active
         });
     }, [players, sessionsByPlayer]);
-    
+
     return (
     <div>
         <h1 className="text-2xl font-bold text-neutral dark:text-white mb-6">Players</h1>
@@ -149,7 +158,7 @@ const PlayerDetail: React.FC<{ player: Player; sessions: Session[]; drills: Dril
                     </div>
                 </div>
             </div>
-            
+
             <h2 className="text-xl font-bold text-neutral dark:text-white mb-4">Session History</h2>
             <div className="bg-white dark:bg-dark-base-200 rounded-xl shadow-md overflow-hidden">
                 <ul className="divide-y divide-base-200 dark:divide-dark-base-300">
@@ -201,7 +210,7 @@ const DrillForm: React.FC<{
             };
         });
     };
-    
+
     const handleChange = (field: keyof Omit<Drill, 'id' | 'teamId' | 'targetZones' | 'pitchTypes' | 'baseRunners'>, value: any) => {
         setDrill(prev => ({...prev, [field]: value }));
     };
@@ -323,7 +332,7 @@ const AssignDrillModal: React.FC<{
     const handlePlayerSelect = (playerId: string) => {
         setSelectedPlayerIds(prev => prev.includes(playerId) ? prev.filter(id => id !== playerId) : [...prev, playerId]);
     };
-    
+
     const handleSelectAll = () => {
         if (selectedPlayerIds.length === players.length) {
             setSelectedPlayerIds([]);
@@ -388,8 +397,8 @@ const AssignDrillModal: React.FC<{
     );
 };
 
-const DrillList: React.FC<{ 
-    drills: Drill[], 
+const DrillList: React.FC<{
+    drills: Drill[],
     players: Player[],
     createDrill: (drill: Omit<Drill, 'id' | 'teamId'>) => void,
     assignDrill: (assignment: { drillId: string, playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => void
@@ -418,7 +427,7 @@ const DrillList: React.FC<{
                             <p className="text-sm text-gray-500 dark:text-gray-400 flex-grow">{drill.description}</p>
                         </div>
                         <div className="text-xs text-gray-600 dark:text-gray-300 pt-2 mt-2 border-t border-base-200 dark:border-dark-base-300">
-                            <p><strong>Goal:</strong> {drill.goalType} >= {drill.goalTargetValue}{drill.goalType.includes('%') ? '%' : ''}</p>
+                            <p><strong>Goal:</strong> {drill.goalType} {'\u2265'} {drill.goalTargetValue}{drill.goalType.includes('%') ? '%' : ''}</p>
                             <p><strong>Volume:</strong> {drill.sets} sets of {drill.repsPerSet} reps</p>
                         </div>
                         <button onClick={() => setDrillToAssign(drill)} className="w-full mt-4 bg-secondary/20 hover:bg-secondary/30 text-secondary font-bold py-2 px-4 rounded-lg text-sm">
@@ -432,7 +441,7 @@ const DrillList: React.FC<{
                 <DrillForm onSave={createDrill} onClose={() => setIsCreateModalOpen(false)} />
             </Modal>
             {drillToAssign && (
-                 <AssignDrillModal 
+                 <AssignDrillModal
                     isOpen={!!drillToAssign}
                     onClose={() => setDrillToAssign(null)}
                     drill={drillToAssign}
@@ -444,15 +453,144 @@ const DrillList: React.FC<{
     );
 }
 
+const CreateTeamModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onCreateTeam: (team: Omit<Team, 'id' | 'code' | 'coachId'>) => void;
+}> = ({ isOpen, onClose, onCreateTeam }) => {
+    const currentYear = new Date().getFullYear();
+    const [teamName, setTeamName] = useState('');
+    const [seasonYear, setSeasonYear] = useState(currentYear);
+    const [logoUrl, setLogoUrl] = useState('');
+
+    useEffect(() => {
+        if (!isOpen) {
+            setTeamName('');
+            setSeasonYear(currentYear);
+            setLogoUrl('');
+        }
+    }, [isOpen, currentYear]);
+
+    const handleSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!teamName.trim()) {
+            return;
+        }
+
+        onCreateTeam({ name: teamName.trim(), seasonYear, logoUrl: logoUrl.trim() || undefined });
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="Create a Team">
+            <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                    <label className="block text-sm font-medium text-gray-500 dark:text-gray-300">Team Name</label>
+                    <input
+                        type="text"
+                        value={teamName}
+                        onChange={(event) => setTeamName(event.target.value)}
+                        placeholder="e.g. Varsity 2024"
+                        className="mt-1 w-full bg-base-100 dark:bg-dark-base-100 border border-base-300 dark:border-dark-base-300 rounded-md py-2 px-3 text-sm focus:ring-primary focus:border-primary"
+                        required
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-500 dark:text-gray-300">Season Year</label>
+                    <input
+                        type="number"
+                        value={seasonYear}
+                        onChange={(event) => setSeasonYear(Number(event.target.value))}
+                        min={2000}
+                        max={currentYear + 5}
+                        className="mt-1 w-full bg-base-100 dark:bg-dark-base-100 border border-base-300 dark:border-dark-base-300 rounded-md py-2 px-3 text-sm focus:ring-primary focus:border-primary"
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-500 dark:text-gray-300">Logo URL (optional)</label>
+                    <input
+                        type="url"
+                        value={logoUrl}
+                        onChange={(event) => setLogoUrl(event.target.value)}
+                        placeholder="https://..."
+                        className="mt-1 w-full bg-base-100 dark:bg-dark-base-100 border border-base-300 dark:border-dark-base-300 rounded-md py-2 px-3 text-sm focus:ring-primary focus:border-primary"
+                    />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-base-200 dark:border-dark-base-200">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="py-2 px-4 bg-base-200 dark:bg-dark-base-200 hover:bg-base-300 dark:hover:bg-dark-base-300 rounded-md"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        className="py-2 px-4 bg-primary hover:bg-primary/90 text-white rounded-md"
+                    >
+                        Create Team
+                    </button>
+                </div>
+            </form>
+        </Modal>
+    );
+};
+
+const TeamEmptyState: React.FC<{ onCreateTeam: () => void }> = ({ onCreateTeam }) => (
+    <div className="min-h-screen bg-base-100 flex items-center justify-center px-6">
+        <div className="max-w-lg w-full bg-white dark:bg-dark-base-200 shadow-xl rounded-2xl p-10 text-center space-y-6">
+            <div className="w-16 h-16 mx-auto rounded-full bg-secondary/20 text-secondary flex items-center justify-center text-2xl font-bold">
+                ⚾
+            </div>
+            <div>
+                <h1 className="text-3xl font-bold text-neutral dark:text-white">Create your first team</h1>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">
+                    Invite players, assign drills, and track progress together. Start by creating a team for your program.
+                </p>
+            </div>
+            <button
+                onClick={onCreateTeam}
+                className="inline-flex justify-center items-center gap-2 bg-primary hover:bg-primary/90 text-white font-semibold py-2.5 px-6 rounded-lg"
+            >
+                + Create Team
+            </button>
+        </div>
+    </div>
+);
+
 export const CoachView: React.FC = () => {
     const [currentView, setCurrentView] = useState('dashboard');
-    const { currentUser, getTeamsForCoach, getPlayersInTeam, getDrillsForTeam, getSessionsForTeam, createDrill, createAssignment } = useContext(DataContext)!;
+    const { currentUser, getTeamsForCoach, getPlayersInTeam, getDrillsForTeam, getSessionsForTeam, createDrill, createAssignment, createTeam } = useContext(DataContext)!;
     const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+    const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
+    const [recentlyCreatedTeam, setRecentlyCreatedTeam] = useState<Team | null>(null);
 
     const coachTeams = getTeamsForCoach(currentUser!.id);
     const [activeTeamId, setActiveTeamId] = useState<string>(coachTeams.length > 0 ? coachTeams[0].id : '');
-    
-    const activeTeam = useMemo(() => coachTeams.find(t => t.id === activeTeamId), [coachTeams, activeTeamId])
+
+    const activeTeam = useMemo(() => coachTeams.find(t => t.id === activeTeamId), [coachTeams, activeTeamId]);
+
+    useEffect(() => {
+        if (coachTeams.length === 0) {
+            setActiveTeamId('');
+            return;
+        }
+
+        if (!coachTeams.some(team => team.id === activeTeamId)) {
+            setActiveTeamId(coachTeams[0].id);
+        }
+    }, [coachTeams, activeTeamId]);
+
+    useEffect(() => {
+        if (!recentlyCreatedTeam) {
+            return;
+        }
+
+        const timeout = setTimeout(() => setRecentlyCreatedTeam(null), 8000);
+        return () => clearTimeout(timeout);
+    }, [recentlyCreatedTeam]);
 
     const players = useMemo(() => getPlayersInTeam(activeTeamId), [activeTeamId, getPlayersInTeam]);
     const drills = useMemo(() => getDrillsForTeam(activeTeamId), [activeTeamId, getDrillsForTeam]);
@@ -477,10 +615,18 @@ export const CoachView: React.FC = () => {
         createAssignment({ teamId: activeTeamId, ...assignment });
     };
 
+    const handleCreateTeam = (teamData: Omit<Team, 'id' | 'code' | 'coachId'>) => {
+        const createdTeam = createTeam(teamData, currentUser!.id);
+        setActiveTeamId(createdTeam.id);
+        setIsCreateTeamModalOpen(false);
+        setRecentlyCreatedTeam(createdTeam);
+        setCurrentView('dashboard');
+    };
+
     const handlePlayerClick = (player: Player) => {
         setSelectedPlayer(player);
     };
-    
+
     const handleBackToPlayerList = () => {
         setSelectedPlayer(null);
     }
@@ -491,55 +637,95 @@ export const CoachView: React.FC = () => {
         { name: 'Drills', icon: <ClipboardListIcon />, view: 'drills' },
         { name: 'Analytics', icon: <ChartBarIcon />, view: 'analytics' },
     ];
-    
-    React.useEffect(() => {
+
+    useEffect(() => {
         if(currentView !== 'players') {
             setSelectedPlayer(null);
         }
     }, [currentView]);
 
     const analyticsData = useMemo(() => {
-        // ... (analytics data logic remains the same)
-        return { playerExecutionData: [], drillSuccessData: [], hardHitData: [] };
-    }, [players, drills, sessions, sessionsByPlayer]);
-    
-    if (!activeTeamId || coachTeams.length === 0 || !activeTeam) {
-        return <div className="p-8 text-center text-neutral dark:text-gray-300">You have not created or joined any teams yet.</div>
-    }
+        return {
+            playerExecutionData: buildExecutionTrend(sessions),
+            drillSuccessData: buildDrillSuccessData(sessions, drills),
+            hardHitData: buildHardHitTrend(sessions),
+        };
+    }, [sessions, drills]);
 
     return (
-        <Dashboard 
-            navItems={navItems} 
-            currentView={currentView} 
-            setCurrentView={setCurrentView}
-            teams={coachTeams}
-            activeTeamId={activeTeamId}
-            setActiveTeamId={setActiveTeamId}
-        >
-            {currentView === 'dashboard' && <CoachDashboard players={players} drills={drills} sessions={sessions} team={activeTeam} />}
-            {currentView === 'players' && (
-                 selectedPlayer ? (
-                    <PlayerDetail 
-                        player={selectedPlayer} 
-                        sessions={sessionsByPlayer[selectedPlayer.id] || []}
-                        drills={drills}
-                        onBack={handleBackToPlayerList}
-                    />
-                ) : (
-                    <PlayerList players={players} sessionsByPlayer={sessionsByPlayer} onPlayerClick={handlePlayerClick} />
-                )
+        <>
+            {coachTeams.length === 0 || !activeTeamId || !activeTeam ? (
+                <TeamEmptyState onCreateTeam={() => setIsCreateTeamModalOpen(true)} />
+            ) : (
+                <Dashboard
+                    navItems={navItems}
+                    currentView={currentView}
+                    setCurrentView={setCurrentView}
+                    teams={coachTeams}
+                    activeTeamId={activeTeamId}
+                    setActiveTeamId={setActiveTeamId}
+                    onRequestCreateTeam={() => setIsCreateTeamModalOpen(true)}
+                >
+                    {recentlyCreatedTeam && (
+                        <div className="mb-6 rounded-xl border border-success/30 bg-success/10 text-success px-4 py-3 flex items-start justify-between gap-3">
+                            <div>
+                                <p className="font-semibold">Team created!</p>
+                                <p className="text-sm">Invite players with code <span className="font-mono text-base">{recentlyCreatedTeam.code}</span>.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setRecentlyCreatedTeam(null)}
+                                className="text-success/80 hover:text-success font-semibold"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    )}
+
+                    {currentView === 'dashboard' && <CoachDashboard players={players} drills={drills} sessions={sessions} team={activeTeam} />}
+                    {currentView === 'players' && (
+                        selectedPlayer ? (
+                            <PlayerDetail
+                                player={selectedPlayer}
+                                sessions={sessionsByPlayer[selectedPlayer.id] || []}
+                                drills={drills}
+                                onBack={handleBackToPlayerList}
+                            />
+                        ) : (
+                            <PlayerList players={players} sessionsByPlayer={sessionsByPlayer} onPlayerClick={handlePlayerClick} />
+                        )
+                    )}
+                    {currentView === 'drills' && (
+                        <DrillList
+                            drills={drills}
+                            players={players}
+                            createDrill={handleCreateDrill}
+                            assignDrill={handleAssignDrill}
+                        />
+                    )}
+                    {currentView === 'analytics' && (
+                        <div>
+                            <h1 className="text-2xl font-bold text-neutral dark:text-white mb-6">Team Analytics</h1>
+                            <AnalyticsCharts
+                                playerExecutionData={analyticsData.playerExecutionData}
+                                drillSuccessData={analyticsData.drillSuccessData}
+                                hardHitData={analyticsData.hardHitData}
+                            />
+                            {analyticsData.drillSuccessData.length === 0 && (
+                                <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                                    Assign drills and log sessions to unlock success metrics.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </Dashboard>
             )}
-            {currentView === 'drills' && <DrillList drills={drills} players={players} createDrill={handleCreateDrill} assignDrill={handleAssignDrill} />}
-            {currentView === 'analytics' && (
-                <div>
-                    <h1 className="text-2xl font-bold text-neutral dark:text-white mb-6">Team Analytics</h1>
-                    <AnalyticsCharts 
-                        playerExecutionData={analyticsData.playerExecutionData}
-                        drillSuccessData={analyticsData.drillSuccessData}
-                        hardHitData={analyticsData.hardHitData}
-                    />
-                </div>
-            )}
-        </Dashboard>
+
+            <CreateTeamModal
+                isOpen={isCreateTeamModalOpen}
+                onClose={() => setIsCreateTeamModalOpen(false)}
+                onCreateTeam={handleCreateTeam}
+            />
+        </>
     );
 };
