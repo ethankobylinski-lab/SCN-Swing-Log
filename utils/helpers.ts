@@ -49,3 +49,84 @@ export const getSessionGoalProgress = (session: Session, drill: Drill): { value:
             return { value: 0, isSuccess: false };
     }
 };
+
+const getDateKey = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const toShortLabel = (dateKey: string) => {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    const date = new Date(year, (month ?? 1) - 1, day);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const limitSortedDateKeys = (dateKeys: string[], limit: number) => {
+    const sorted = dateKeys.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    return sorted.slice(Math.max(sorted.length - limit, 0));
+};
+
+export const buildExecutionTrend = (sessions: Session[], limit = 7) => {
+    if (sessions.length === 0) return [] as { name: string; 'Execution %': number }[];
+
+    const grouped = sessions.reduce<Record<string, Session[]>>((acc, session) => {
+        const key = getDateKey(session.date);
+        acc[key] = acc[key] ? [...acc[key], session] : [session];
+        return acc;
+    }, {});
+
+    return limitSortedDateKeys(Object.keys(grouped), limit).map(dateKey => {
+        const daySessions = grouped[dateKey];
+        const avgExecution = Math.round(
+            daySessions.reduce((sum, current) => sum + calculateExecutionPercentage(current.sets), 0) /
+            daySessions.length
+        );
+        return { name: toShortLabel(dateKey), 'Execution %': avgExecution };
+    });
+};
+
+export const buildHardHitTrend = (sessions: Session[], limit = 7) => {
+    if (sessions.length === 0) return [] as { name: string; 'Hard Hit %': number }[];
+
+    const grouped = sessions.reduce<Record<string, Session[]>>((acc, session) => {
+        const key = getDateKey(session.date);
+        acc[key] = acc[key] ? [...acc[key], session] : [session];
+        return acc;
+    }, {});
+
+    return limitSortedDateKeys(Object.keys(grouped), limit).map(dateKey => {
+        const daySessions = grouped[dateKey];
+        const avgHardHit = Math.round(
+            daySessions.reduce((sum, current) => sum + calculateHardHitPercentage(current.sets), 0) /
+            daySessions.length
+        );
+        return { name: toShortLabel(dateKey), 'Hard Hit %': avgHardHit };
+    });
+};
+
+export const buildDrillSuccessData = (sessions: Session[], drills: Drill[]) => {
+    if (drills.length === 0) return [] as { name: string; 'Success Rate': number; 'Avg Metric': number; goalType: string }[];
+
+    return drills
+        .map(drill => {
+            const drillSessions = sessions.filter(session => session.drillId === drill.id);
+            if (drillSessions.length === 0) {
+                return null;
+            }
+
+            const progressValues = drillSessions.map(session => getSessionGoalProgress(session, drill));
+            const successes = progressValues.filter(result => result.isSuccess).length;
+            const successRate = Math.round((successes / drillSessions.length) * 100);
+            const averageMetric = Math.round(
+                progressValues.reduce((sum, result) => sum + result.value, 0) / progressValues.length
+            );
+
+            return {
+                name: drill.name,
+                'Success Rate': successRate,
+                'Avg Metric': averageMetric,
+                goalType: drill.goalType,
+            };
+        })
+        .filter(Boolean) as { name: string; 'Success Rate': number; 'Avg Metric': number; goalType: string }[];
+};

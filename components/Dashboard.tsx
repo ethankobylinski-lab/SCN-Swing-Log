@@ -40,21 +40,31 @@ interface TeamSwitcherProps {
   teams: Team[];
   activeTeamId: string;
   setActiveTeamId: (teamId: string) => void;
+  onCreateTeam?: () => void;
 }
 
-const TeamSwitcher: React.FC<TeamSwitcherProps> = ({ teams, activeTeamId, setActiveTeamId }) => {
+const TeamSwitcher: React.FC<TeamSwitcherProps> = ({ teams, activeTeamId, setActiveTeamId, onCreateTeam }) => {
   return (
-    <div className="px-2 mb-4">
-      <select 
+    <div className="px-2 mb-4 space-y-2">
+      <select
         value={activeTeamId}
         onChange={(e) => setActiveTeamId(e.target.value)}
         className="w-full bg-base-300 border border-base-300 text-white text-sm rounded-lg focus:ring-secondary focus:border-secondary block p-2.5"
       >
         {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
       </select>
+      {onCreateTeam && (
+        <button
+          type="button"
+          onClick={onCreateTeam}
+          className="w-full text-sm font-semibold bg-secondary/20 hover:bg-secondary/30 text-secondary py-2 rounded-lg transition-colors"
+        >
+          + Create Team
+        </button>
+      )}
     </div>
-  )
-}
+  );
+};
 
 interface DashboardProps {
     children: React.ReactNode;
@@ -64,9 +74,10 @@ interface DashboardProps {
     teams?: Team[];
     activeTeamId?: string;
     setActiveTeamId?: (teamId: string) => void;
+    onRequestCreateTeam?: () => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ children, navItems, currentView, setCurrentView, teams, activeTeamId, setActiveTeamId }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ children, navItems, currentView, setCurrentView, teams, activeTeamId, setActiveTeamId, onRequestCreateTeam }) => {
   const { currentUser, logout } = useContext(DataContext)!;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -77,7 +88,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ children, navItems, curren
       </div>
       <div className="mt-5 flex-1 flex flex-col">
           {teams && activeTeamId && setActiveTeamId && (
-              <TeamSwitcher teams={teams} activeTeamId={activeTeamId} setActiveTeamId={setActiveTeamId} />
+              <TeamSwitcher teams={teams} activeTeamId={activeTeamId} setActiveTeamId={setActiveTeamId} onCreateTeam={onRequestCreateTeam} />
           )}
           <SidebarNav navItems={navItems} currentView={currentView} setCurrentView={setCurrentView} />
       </div>

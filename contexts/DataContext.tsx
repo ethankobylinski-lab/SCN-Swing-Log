@@ -87,7 +87,7 @@ interface IDataContext {
   createDrill: (drillData: Omit<Drill, 'id' | 'teamId'>, teamId: string) => void;
   createAssignment: (assignmentData: Omit<DrillAssignment, 'id' | 'assignedDate'>) => void;
   logSession: (sessionData: Omit<Session, 'id'>) => void;
-  createTeam: (teamData: Omit<Team, 'id'|'code'|'coachId'>, coachId: string) => void;
+  createTeam: (teamData: Omit<Team, 'id' | 'code' | 'coachId'>, coachId: string) => Team;
 }
 
 export const DataContext = createContext<IDataContext | undefined>(undefined);
@@ -199,7 +199,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setSessions(prev => [...prev, newSession]);
     };
 
-    const createTeam = (teamData: Omit<Team, 'id'|'code'|'coachId'>, coachId: string) => {
+    const createTeam = (teamData: Omit<Team, 'id' | 'code' | 'coachId'>, coachId: string): Team => {
         const newTeam: Team = {
             id: `team${Date.now()}`,
             code: generateTeamCode(),
@@ -207,13 +207,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             ...teamData,
         };
         setTeams(prev => [...prev, newTeam]);
+        const isCoachCurrentUser = currentUser?.id === coachId;
+        const updatedTeamIds = isCoachCurrentUser
+            ? Array.from(new Set([...currentUser!.teamIds, newTeam.id]))
+            : undefined;
+
         setUsers(prevUsers => prevUsers.map(u => {
-            if(u.id === coachId) {
-                return { ...u, teamIds: [...u.teamIds, newTeam.id] };
+            if (u.id === coachId) {
+                const nextTeamIds = Array.from(new Set([...u.teamIds, newTeam.id]));
+                return { ...u, teamIds: nextTeamIds };
             }
             return u;
         }));
-    }
+
+        if (isCoachCurrentUser && updatedTeamIds) {
+            const updatedUser = { ...currentUser!, teamIds: updatedTeamIds };
+            setCurrentUser(updatedUser);
+            sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
+        }
+        return newTeam;
+    };
 
     const value = {
         currentUser,
