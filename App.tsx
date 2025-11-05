@@ -1,10 +1,10 @@
-
 import React, { useContext } from 'react';
 import { DataContext } from './contexts/DataContext';
 import { Login } from './components/Login';
 import { CoachView } from './components/CoachView';
 import { PlayerView } from './components/PlayerView';
 import { Spinner } from './components/Spinner';
+import { Onboarding } from './components/Onboarding';
 import { UserRole } from './types';
 
 export const App: React.FC = () => {
@@ -32,10 +32,32 @@ export const App: React.FC = () => {
     return <Login />;
   }
 
+  if (currentUser.isNew) {
+    return <Onboarding />;
+  }
+
+  const renderView = () => {
+    switch (currentUser.role) {
+      case UserRole.Coach:
+        return <CoachView />;
+      case UserRole.Player:
+        return <PlayerView />;
+      default:
+        // This is a fallback for any unexpected user role.
+        return (
+          <div className="min-h-screen flex items-center justify-center text-center">
+            <div>
+              <h2 className="text-xl font-bold">Invalid Role</h2>
+              <p className="text-muted-foreground">Your user role is not recognized. Please contact support.</p>
+            </div>
+          </div>
+        );
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-base-100">
-      {currentUser.role === UserRole.Coach && <CoachView />}
-      {currentUser.role === UserRole.Player && <PlayerView />}
+    <div className="min-h-screen bg-background">
+      {renderView()}
     </div>
   );
 };

@@ -6,19 +6,26 @@ export enum UserRole {
 
 export interface User {
   id: string;
-  email: string;
+  email?: string; // Email is now optional
+  phoneNumber?: string | null;
   name: string;
   role: UserRole;
   teamIds: string[];
+  isNew?: boolean; // Flag for new users needing onboarding
 }
 
 export interface Team {
   id:string;
   name: string;
-  code: string;
   logoUrl?: string;
   seasonYear: number;
   coachId: string;
+}
+
+// Added JoinCode interface to manage team invitations
+export interface JoinCode {
+  id: string; // The code itself
+  teamId: string;
 }
 
 export interface PlayerProfile {
@@ -41,7 +48,7 @@ export type TargetZone = 'Inside High' | 'Inside Middle' | 'Inside Low' | 'Middl
 export type PitchType = 'Fastball' | 'Curveball' | 'Slider' | 'Changeup' | 'Sinker';
 export type CountSituation = 'Ahead' | 'Even' | 'Behind';
 export type BaseRunner = '1B' | '2B' | '3B';
-export type GoalType = 'Execution %' | 'Hard Hit %' | 'No Strikeouts';
+export type GoalType = 'Execution %' | 'Hard Hit %' | 'No Strikeouts' | 'Total Reps';
 export type DrillType = 'Tee Work' | 'Soft Toss' | 'Front Toss' | 'Throwing' | 'Live BP' | 'Machine';
 
 export interface Drill {
@@ -100,4 +107,30 @@ export interface DrillAssignment {
   recurringDays?: DayOfWeek[];
   dueDate?: string; // For one-time assignments
   assignedDate: string;
+}
+
+export interface PersonalGoal {
+  id: string;
+  playerId: string;
+  metric: GoalType;
+  targetValue: number;
+  startDate: string;
+  targetDate: string;
+  status: 'Active' | 'Completed' | 'Archived';
+  drillType?: DrillType;
+  targetZones?: TargetZone[];
+}
+
+export interface TeamGoal {
+  id: string;
+  teamId: string;
+  description: string;
+  metric: GoalType;
+  targetValue: number;
+  startDate: string;
+  targetDate: string;
+  status: 'Active' | 'Completed' | 'Archived';
+  drillType?: DrillType;
+  targetZones?: TargetZone[];
+  pitchTypes?: PitchType[];
 }

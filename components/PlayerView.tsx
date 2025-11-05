@@ -5,20 +5,100 @@ import { HomeIcon } from './icons/HomeIcon';
 import { ClipboardListIcon } from './icons/ClipboardListIcon';
 import { ChartBarIcon } from './icons/ChartBarIcon';
 import { PencilIcon } from './icons/PencilIcon';
-import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner } from '../types';
-import { formatDate, calculateExecutionPercentage, getSessionGoalProgress, calculateHardHitPercentage } from '../utils/helpers';
+import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner, PersonalGoal, GoalType, TeamGoal } from '../types';
+import { formatDate, calculateExecutionPercentage, getSessionGoalProgress, calculateHardHitPercentage, getCurrentMetricValue, formatGoalName, calculateStrikeoutPercentage, getCurrentTeamMetricValue, formatTeamGoalName } from '../utils/helpers';
 import { AnalyticsCharts } from './AnalyticsCharts';
-import { TARGET_ZONES, PITCH_TYPES, COUNT_SITUATIONS, BASE_RUNNERS, OUTS_OPTIONS, DRILL_TYPES } from '../constants';
+import { TARGET_ZONES, PITCH_TYPES, COUNT_SITUATIONS, BASE_RUNNERS, OUTS_OPTIONS, DRILL_TYPES, GOAL_TYPES } from '../constants';
+import { PlayerRadarChart } from './PlayerRadarChart';
+import { Modal } from './Modal';
+import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
+import { BreakdownBar } from './BreakdownBar';
+import { SessionSaveAnimation } from './SessionSaveAnimation';
 
+const GoalProgress: React.FC<{ goal: PersonalGoal; sessions: Session[], drills: Drill[], onDelete: (goalId: string) => void; }> = ({ goal, sessions, drills, onDelete }) => {
+    const currentValue = getCurrentMetricValue(goal, sessions, drills);
+    
+    let progress = 0;
+    if (goal.targetValue > 0) {
+        if (goal.metric === 'No Strikeouts') {
+            progress = Math.max(0, 100 - (currentValue / goal.targetValue * 100));
+        } else {
+            progress = (currentValue / goal.targetValue) * 100;
+        }
+    } else if (goal.metric === 'No Strikeouts' && goal.targetValue === 0) {
+        progress = currentValue === 0 ? 100 : 0;
+    }
+
+    const isPercentage = goal.metric.includes('%');
+    const displayValue = isPercentage ? `${currentValue}%` : currentValue;
+    const displayTarget = isPercentage ? `${goal.targetValue}%` : goal.targetValue;
+
+    return (
+        <div className="bg-muted/50 p-3 rounded-lg">
+            <div className="flex justify-between items-start">
+                <div>
+                    <h4 className="font-semibold text-card-foreground">{formatGoalName(goal)}</h4>
+                    <p className="text-xs text-muted-foreground">Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
+                </div>
+                <button onClick={() => onDelete(goal.id)} className="text-muted-foreground hover:text-destructive text-lg font-bold">&times;</button>
+            </div>
+            <div className="flex items-center gap-3 mt-2">
+                <div className="w-full bg-background rounded-full h-2.5">
+                    <div className="bg-secondary h-2.5 rounded-full" style={{ width: `${Math.min(progress, 100)}%` }}></div>
+                </div>
+                <span className="text-sm font-bold text-primary">{displayValue}</span>
+            </div>
+        </div>
+    );
+};
+
+const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: Drill[]; }> = ({ goal, sessions, drills }) => {
+    const currentValue = getCurrentTeamMetricValue(goal, sessions, drills);
+    
+    let progress = 0;
+    if (goal.targetValue > 0) {
+        if (goal.metric === 'No Strikeouts') {
+            progress = Math.max(0, 100 - (currentValue / goal.targetValue * 100));
+        } else {
+            progress = (currentValue / goal.targetValue) * 100;
+        }
+    } else if (goal.metric === 'No Strikeouts' && goal.targetValue === 0) {
+        progress = currentValue === 0 ? 100 : 0;
+    }
+
+    const isPercentage = goal.metric.includes('%');
+    const displayValue = isPercentage ? `${Math.round(currentValue)}%` : Math.round(currentValue);
+    const displayTarget = isPercentage ? `${goal.targetValue}%` : goal.targetValue;
+
+    return (
+        <div className="bg-muted/50 p-3 rounded-lg">
+            <div>
+                <h4 className="font-semibold text-card-foreground">{goal.description}</h4>
+                <p className="text-xs text-muted-foreground">{formatTeamGoalName(goal)} | Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
+            </div>
+            <div className="flex items-center gap-3 mt-2">
+                <div className="w-full bg-background rounded-full h-2.5">
+                    <div className="bg-secondary h-2.5 rounded-full" style={{ width: `${Math.min(progress, 100)}%` }}></div>
+                </div>
+                <span className="text-sm font-bold text-primary">{displayValue}</span>
+            </div>
+        </div>
+    );
+};
 
 const PlayerDashboard: React.FC<{
     player: Player;
     assignedDrills: Drill[];
     recentSessions: Session[];
     drills: Drill[];
+    goals: PersonalGoal[];
+    teamGoals: TeamGoal[];
+    teamSessions: Session[];
     onStartAssignedSession: (drill: Drill) => void;
-    onStartAdHocSession: () => void;
-}> = ({ player, assignedDrills, recentSessions, drills, onStartAssignedSession, onStartAdHocSession }) => {
+}> = ({ player, assignedDrills, recentSessions, drills, goals, teamGoals, teamSessions, onStartAssignedSession }) => {
+    
+    const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+    const { createGoal, deleteGoal } = useContext(DataContext)!;
     
     const overallExecutionPct = useMemo(() => {
         const allSets = recentSessions.flatMap(s => s.sets);
@@ -26,83 +106,165 @@ const PlayerDashboard: React.FC<{
         return calculateExecutionPercentage(allSets);
     }, [recentSessions]);
 
+    const handleCreateGoal = (goalData: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate'>) => {
+        createGoal({
+            ...goalData,
+            playerId: player.id,
+            status: 'Active',
+            startDate: new Date().toISOString()
+        });
+        setIsGoalModalOpen(false);
+    }
+    
+    const StatCard: React.FC<{title: string; value: string;}> = ({title, value}) => (
+        <div className="bg-card border border-border p-4 rounded-lg shadow-sm text-center">
+            <h3 className="text-sm font-semibold text-muted-foreground">{title}</h3>
+            <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
+        </div>
+    );
+
     return (
-        <div>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6">
-                <div>
-                    <h1 className="text-2xl font-bold text-neutral dark:text-white mb-2">Welcome back, {player.name.split(' ')[0]}!</h1>
-                    <p className="text-gray-400">Here's what's on your plate for today.</p>
-                </div>
-                <button 
-                    onClick={onStartAdHocSession} 
-                    className="mt-4 sm:mt-0 w-full sm:w-auto bg-primary hover:bg-primary/90 text-white font-bold py-2 px-6 rounded-lg shadow-lg transition-transform hover:scale-105"
-                >
-                    Start Ad-Hoc Session
-                </button>
+        <div className="space-y-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <StatCard title="Drills for Today" value={assignedDrills.length.toString()} />
+                <StatCard title="Overall Execution" value={`${overallExecutionPct}%`} />
+                <StatCard title="Active Goals" value={goals.length.toString()} />
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="bg-white dark:bg-dark-base-200 p-6 rounded-xl shadow-md text-center">
-                    <h3 className="text-lg font-semibold text-gray-500 dark:text-gray-400">Drills for Today</h3>
-                    <p className="text-4xl font-bold text-primary">{assignedDrills.length}</p>
-                </div>
-                <div className="bg-white dark:bg-dark-base-200 p-6 rounded-xl shadow-md text-center">
-                    <h3 className="text-lg font-semibold text-gray-500 dark:text-gray-400">Overall Execution %</h3>
-                    <p className="text-4xl font-bold text-primary">{overallExecutionPct}%</p>
-                </div>
-            </div>
-
-            <div className="mb-8">
-                <h2 className="text-xl font-bold text-neutral dark:text-white mb-4">Today's Drills</h2>
-                {assignedDrills.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {assignedDrills.map(drill => (
-                            <div key={drill.id} className="bg-white dark:bg-dark-base-200 p-4 rounded-xl shadow-md flex flex-col justify-between">
-                                <div>
-                                    <h3 className="font-bold text-primary">{drill.name}</h3>
-                                    <p className="text-sm text-gray-400 mt-1 mb-3">{drill.description}</p>
-                                    <p className="text-xs text-gray-300"><strong>Goal:</strong> {drill.goalType} &gt;= {drill.goalTargetValue}{drill.goalType.includes('%') ? '%' : ''}</p>
-                                </div>
-                                <button onClick={() => onStartAssignedSession(drill)} className="w-full mt-4 bg-secondary hover:bg-secondary/90 text-white font-bold py-2 px-4 rounded-lg text-sm">
-                                    Start Session
-                                </button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-8">
+                    <div>
+                        <h2 className="text-xl font-bold text-foreground mb-4">Today's Drills</h2>
+                        {assignedDrills.length > 0 ? (
+                            <div className="space-y-4">
+                                {assignedDrills.map(drill => (
+                                    <div key={drill.id} className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col justify-between">
+                                        <div>
+                                            <h3 className="font-bold text-primary">{drill.name}</h3>
+                                            <p className="text-sm text-muted-foreground mt-1 mb-3">{drill.description}</p>
+                                            <p className="text-xs text-card-foreground"><strong>Goal:</strong> {drill.goalType} &gt;= {drill.goalTargetValue}{drill.goalType.includes('%') ? '%' : ''}</p>
+                                        </div>
+                                        <button onClick={() => onStartAssignedSession(drill)} className="w-full mt-4 bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-2 px-4 rounded-lg text-sm">
+                                            Start Session
+                                        </button>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
+                        ) : (
+                            <div className="bg-card border border-border p-6 rounded-lg shadow-sm text-center text-muted-foreground">
+                                <p>No drills assigned for today. Great job staying on top of your work!</p>
+                            </div>
+                        )}
                     </div>
-                ) : (
-                    <div className="bg-white dark:bg-dark-base-200 p-6 rounded-xl shadow-md text-center text-gray-400">
-                        <p>No drills assigned for today. Great job staying on top of your work!</p>
+                     <div>
+                        <h2 className="text-xl font-bold text-foreground mb-4">Active Team Goals</h2>
+                        <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                            {teamGoals.length > 0 ? (
+                                <div className="space-y-4">
+                                    {teamGoals.map(g => <TeamGoalProgress key={g.id} goal={g} sessions={teamSessions} drills={drills} />)}
+                                </div>
+                            ) : (
+                                <div className="text-center text-muted-foreground py-6">
+                                    <p>Your coach hasn't set any team goals yet.</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                )}
-            </div>
-
-            <div>
-                <h2 className="text-xl font-bold text-neutral dark:text-white mb-4">Recent Activity</h2>
-                <div className="bg-white dark:bg-dark-base-200 p-4 rounded-xl shadow-md">
-                     <ul className="divide-y divide-base-200 dark:divide-dark-base-300">
-                        {recentSessions.slice(0, 5).map(session => {
-                             const drill = drills.find(d => d.id === session.drillId);
-                             const progress = drill ? getSessionGoalProgress(session, drill) : { value: calculateExecutionPercentage(session.sets), isSuccess: true };
-                             const goalType = drill ? drill.goalType : "Exec %";
-
-                            return (
-                                <li key={session.id} className="py-3 flex justify-between items-center">
-                                    <div>
-                                        <p className="font-semibold text-neutral dark:text-gray-200">Completed <span className="text-primary font-bold">{session.name}</span></p>
-                                        <p className="text-sm text-gray-400">{formatDate(session.date)}</p>
-                                    </div>
-                                    <div className={`px-3 py-1 text-sm font-semibold rounded-full ${progress.isSuccess ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`}>
-                                        {goalType}: {progress.value}{drill?.goalType.includes('%') ? '%' : ''}
-                                    </div>
-                                </li>
-                            )
-                        })}
-                        {recentSessions.length === 0 && <p className="text-gray-400 text-center py-4">No sessions logged yet.</p>}
-                    </ul>
+                </div>
+                 <div>
+                    <div className="flex justify-between items-center mb-4">
+                         <h2 className="text-xl font-bold text-foreground">My Goals</h2>
+                         <button onClick={() => setIsGoalModalOpen(true)} className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-1 px-3 text-sm rounded-lg">+ Set Goal</button>
+                    </div>
+                     <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                        {goals.length > 0 ? (
+                             <div className="space-y-4">
+                                {goals.map(g => <GoalProgress key={g.id} goal={g} sessions={recentSessions} drills={drills} onDelete={deleteGoal} />)}
+                            </div>
+                        ) : (
+                             <div className="text-center text-muted-foreground py-6">
+                                <p>You haven't set any goals yet.</p>
+                                <p className="text-sm">Click "+ Set Goal" to get started!</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
+            <Modal isOpen={isGoalModalOpen} onClose={() => setIsGoalModalOpen(false)} title="Set a New Goal">
+                <GoalForm onSave={handleCreateGoal} />
+            </Modal>
         </div>
+    );
+};
+
+const GoalForm: React.FC<{ onSave: (data: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate'>) => void; }> = ({ onSave }) => {
+    const [metric, setMetric] = useState<GoalType>('Execution %');
+    const [targetValue, setTargetValue] = useState(85);
+    const [targetDate, setTargetDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]); // 30 days from now
+    const [drillType, setDrillType] = useState<DrillType | undefined>(undefined);
+    const [targetZones, setTargetZones] = useState<TargetZone[]>([]);
+
+    const handleTargetZoneSelect = (zone: TargetZone) => {
+        setTargetZones(prev => prev.includes(zone) ? prev.filter(z => z !== zone) : [...prev, zone]);
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const goalData: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate'> = {
+            metric,
+            targetValue,
+            targetDate,
+        };
+        if(drillType) goalData.drillType = drillType;
+        if(targetZones.length > 0) goalData.targetZones = targetZones;
+        onSave(goalData);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-muted-foreground">Metric</label>
+                    <select value={metric} onChange={e => setMetric(e.target.value as GoalType)} className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
+                        {GOAL_TYPES.map(g => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-muted-foreground">Target Value</label>
+                    <input type="number" value={targetValue} onChange={e => setTargetValue(parseInt(e.target.value))} required className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
+                </div>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-muted-foreground">Target Date</label>
+                <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} required className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
+            </div>
+            
+            <div>
+                <h4 className="text-md font-semibold text-muted-foreground border-b border-border pb-2 mb-3">Goal Specificity (Optional)</h4>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground">Drill Type</label>
+                        <select value={drillType || ''} onChange={e => setDrillType(e.target.value as DrillType || undefined)} className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
+                            <option value="">Any Drill Type</option>
+                            {DRILL_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Target Zones</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {TARGET_ZONES.map(zone => (
+                                <button type="button" key={zone} onClick={() => handleTargetZoneSelect(zone)} className={`p-2 text-xs rounded-md ${targetZones.includes(zone) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>{zone}</button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-end pt-4">
+                 <button type="submit" className="py-2 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md">Save Goal</button>
+            </div>
+        </form>
     );
 };
 
@@ -151,11 +313,11 @@ const LogSession: React.FC<{
 
     const Stepper: React.FC<{label: string, value: number, onChange: (val: number) => void, max?: number, readOnly?: boolean}> = ({label, value, onChange, max, readOnly}) => (
         <div className="text-center">
-            <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">{label}</label>
+            <label className="text-sm font-semibold text-muted-foreground">{label}</label>
             <div className="flex items-center justify-center gap-3 mt-2">
-                <button type="button" disabled={readOnly} onClick={() => onChange(Math.max(0, value - 1))} className="w-8 h-8 rounded-full bg-base-200 dark:bg-dark-base-300 text-lg font-bold disabled:opacity-50">-</button>
-                <span className="text-2xl font-bold text-neutral dark:text-white w-10">{value}</span>
-                <button type="button" disabled={readOnly} onClick={() => onChange(max === undefined ? value + 1 : Math.min(max, value + 1))} className="w-8 h-8 rounded-full bg-base-200 dark:bg-dark-base-300 text-lg font-bold disabled:opacity-50">+</button>
+                <button type="button" disabled={readOnly} onClick={() => onChange(Math.max(0, value - 1))} className="w-10 h-10 rounded-full bg-muted text-lg font-bold disabled:opacity-50">-</button>
+                <span className="text-2xl font-bold text-foreground w-12 text-center">{value}</span>
+                <button type="button" disabled={readOnly} onClick={() => onChange(max === undefined ? value + 1 : Math.min(max, value + 1))} className="w-10 h-10 rounded-full bg-muted text-lg font-bold disabled:opacity-50">+</button>
             </div>
         </div>
     );
@@ -165,59 +327,55 @@ const LogSession: React.FC<{
 
     return (
         <div className="space-y-6">
-            <h1 className="text-2xl font-bold text-neutral dark:text-white">{isAssigned ? `Assigned Drill: ${assignedDrill.name}` : 'Log New Session'}</h1>
-            
-            <div className="bg-white dark:bg-dark-base-200 p-4 rounded-lg shadow-md space-y-4">
-                {/* Drill Type */}
+            <div className="bg-card border border-border p-4 rounded-lg shadow-sm space-y-4">
                 <div>
-                    <h3 className="font-semibold text-gray-500 dark:text-gray-400 mb-2">Drill Type</h3>
+                    <h3 className="font-semibold text-muted-foreground mb-2">Drill Type</h3>
                     <div className="flex flex-wrap gap-2">
-                        {DRILL_TYPES.map(d => <button type="button" key={d} disabled={isAssigned} onClick={() => setDrillType(d)} className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${drillType === d ? 'bg-primary text-white' : 'bg-base-200 dark:bg-dark-base-300 hover:bg-base-300 disabled:opacity-70'}`}>{d}</button>)}
+                        {DRILL_TYPES.map(d => <button type="button" key={d} disabled={isAssigned} onClick={() => setDrillType(d)} className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${drillType === d ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{d}</button>)}
                     </div>
                 </div>
-                 {/* Target Zone & Pitch Type */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <h3 className="font-semibold text-gray-500 dark:text-gray-400 mb-2">Target Zone (Optional)</h3>
+                        <h3 className="font-semibold text-muted-foreground mb-2">Target Zone (Optional)</h3>
                         <div className="grid grid-cols-3 gap-2">
-                            {TARGET_ZONES.map(z => <button type="button" key={z} disabled={isAssigned} onClick={() => handleMultiSelect(setTargetZones, z)} className={`p-2 text-xs rounded-md ${targetZones.includes(z) ? 'bg-primary text-white' : 'bg-base-200 dark:bg-dark-base-300 hover:bg-base-300 disabled:opacity-70'}`}>{z}</button>)}
+                            {TARGET_ZONES.map(z => <button type="button" key={z} disabled={isAssigned} onClick={() => handleMultiSelect(setTargetZones, z)} className={`p-2 text-xs rounded-md ${targetZones.includes(z) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{z}</button>)}
                         </div>
                     </div>
                      <div>
-                        <h3 className="font-semibold text-gray-500 dark:text-gray-400 mb-2">Pitch Type (Optional)</h3>
+                        <h3 className="font-semibold text-muted-foreground mb-2">Pitch Type (Optional)</h3>
                         <div className="grid grid-cols-3 gap-2">
-                           {PITCH_TYPES.map(p => <button type="button" key={p} disabled={isAssigned} onClick={() => handleMultiSelect(setPitchTypes, p)} className={`p-2 text-xs rounded-md ${pitchTypes.includes(p) ? 'bg-primary text-white' : 'bg-base-200 dark:bg-dark-base-300 hover:bg-base-300 disabled:opacity-70'}`}>{p}</button>)}
+                           {PITCH_TYPES.map(p => <button type="button" key={p} disabled={isAssigned} onClick={() => handleMultiSelect(setPitchTypes, p)} className={`p-2 text-xs rounded-md ${pitchTypes.includes(p) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{p}</button>)}
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-dark-base-200 p-4 rounded-lg shadow-md space-y-4">
-                <h3 className="font-semibold text-gray-500 dark:text-gray-400 mb-2">Game Situation</h3>
+            <div className="bg-card border border-border p-4 rounded-lg shadow-sm space-y-4">
+                <h3 className="font-semibold text-muted-foreground mb-2">Game Situation</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
                     <div>
-                        <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">Outs</label>
+                        <label className="text-sm font-semibold text-muted-foreground">Outs</label>
                         <div className="flex gap-2 mt-2">
-                            {OUTS_OPTIONS.map(o => <button type="button" key={o} disabled={isAssigned} onClick={() => setOuts(o)} className={`flex-1 p-2 text-sm rounded-md ${outs === o ? 'bg-primary text-white' : 'bg-base-200 dark:bg-dark-base-300 hover:bg-base-300 disabled:opacity-70'}`}>{o}</button>)}
+                            {OUTS_OPTIONS.map(o => <button type="button" key={o} disabled={isAssigned} onClick={() => setOuts(o)} className={`flex-1 p-2 text-sm rounded-md ${outs === o ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{o}</button>)}
                         </div>
                     </div>
                      <div>
-                        <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">Count</label>
-                        <select value={count} disabled={isAssigned} onChange={(e) => setCount(e.target.value as CountSituation)} className="mt-2 w-full bg-base-200 dark:bg-dark-base-300 border-none rounded-md py-2 px-3 text-sm disabled:opacity-70">
+                        <label className="text-sm font-semibold text-muted-foreground">Count</label>
+                        <select value={count} disabled={isAssigned} onChange={(e) => setCount(e.target.value as CountSituation)} className="mt-2 w-full bg-background border-input rounded-md py-2 px-3 text-sm disabled:opacity-70">
                             {COUNT_SITUATIONS.map(c => <option key={c}>{c}</option>)}
                         </select>
                     </div>
                     <div className="col-span-2">
-                        <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">Base Runners</label>
+                        <label className="text-sm font-semibold text-muted-foreground">Base Runners</label>
                         <div className="flex gap-2 mt-2">
-                            {BASE_RUNNERS.map(r => <button type="button" key={r} disabled={isAssigned} onClick={() => handleMultiSelect(setRunners, r)} className={`flex-1 p-2 text-sm rounded-md ${runners.includes(r) ? 'bg-primary text-white' : 'bg-base-200 dark:bg-dark-base-300 hover:bg-base-300 disabled:opacity-70'}`}>{r}</button>)}
+                            {BASE_RUNNERS.map(r => <button type="button" key={r} disabled={isAssigned} onClick={() => handleMultiSelect(setRunners, r)} className={`flex-1 p-2 text-sm rounded-md ${runners.includes(r) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{r}</button>)}
                         </div>
                     </div>
                 </div>
             </div>
             
-            <div className="bg-white dark:bg-dark-base-200 p-4 rounded-lg shadow-md space-y-4">
-                 <h3 className="font-semibold text-gray-500 dark:text-gray-400 mb-2">Log Set #{currentSet.setNumber}</h3>
+            <div className="bg-card border border-border p-4 rounded-lg shadow-sm space-y-4">
+                 <h3 className="font-semibold text-muted-foreground mb-2">Log Set #{currentSet.setNumber}</h3>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                      <Stepper label="Reps" value={currentSet.repsAttempted} onChange={(v) => setCurrentSet(s=>({...s, repsAttempted: v}))} readOnly={isAssigned}/>
                      <Stepper label="Executions" value={currentSet.repsExecuted} onChange={(v) => setCurrentSet(s=>({...s, repsExecuted: v}))} max={currentSet.repsAttempted} />
@@ -225,16 +383,16 @@ const LogSession: React.FC<{
                      <Stepper label="Strikeouts" value={currentSet.strikeouts} onChange={(v) => setCurrentSet(s=>({...s, strikeouts: v}))} max={currentSet.repsAttempted}/>
                  </div>
                  <div className="pt-4">
-                    <label className="text-sm font-semibold text-gray-500 dark:text-gray-400">Grade Your Set ({currentSet.grade})</label>
-                    <input type="range" min="1" max="10" value={currentSet.grade} onChange={e => setCurrentSet(s=>({...s, grade: parseInt(e.target.value)}))} className="w-full h-2 bg-base-200 rounded-lg appearance-none cursor-pointer mt-2"/>
+                    <label className="text-sm font-semibold text-muted-foreground">Grade Your Set ({currentSet.grade})</label>
+                    <input type="range" min="1" max="10" value={currentSet.grade} onChange={e => setCurrentSet(s=>({...s, grade: parseInt(e.target.value)}))} className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer mt-2"/>
                  </div>
                  <button onClick={handleAddSet} className="w-full bg-primary/20 hover:bg-primary/30 text-primary font-bold py-2 px-4 rounded-lg text-sm">+ Add Set</button>
             </div>
             
              {loggedSets.length > 0 && (
-                <div className="bg-white dark:bg-dark-base-200 p-4 rounded-lg shadow-md">
-                    <h3 className="font-semibold text-gray-500 dark:text-gray-400 mb-2">Session Summary ({totalExec}/{totalReps})</h3>
-                     <ul className="divide-y divide-base-200 dark:divide-dark-base-300">
+                <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                    <h3 className="font-semibold text-muted-foreground mb-2">Session Summary ({totalExec}/{totalReps})</h3>
+                     <ul className="divide-y divide-border">
                         {loggedSets.map((s, i) => (
                            <li key={i} className="py-2 flex justify-between items-center text-sm">
                                <span className="font-bold">Set {s.setNumber}</span>
@@ -249,20 +407,18 @@ const LogSession: React.FC<{
              )}
 
             <div className="flex justify-end gap-4">
-                <button onClick={onCancel} className="bg-base-200 hover:bg-base-300 text-neutral dark:text-white font-bold py-2 px-6 rounded-lg">Cancel</button>
-                <button onClick={handleSaveSession} className="bg-secondary hover:bg-secondary/90 text-white font-bold py-2 px-6 rounded-lg">Save Session</button>
+                <button onClick={onCancel} className="bg-muted hover:bg-muted/80 text-foreground font-bold py-2 px-6 rounded-lg">Cancel</button>
+                <button onClick={handleSaveSession} className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-2 px-6 rounded-lg">Save Session</button>
             </div>
         </div>
     );
 };
 
-
 const SessionHistory: React.FC<{ sessions: Session[]; drills: Drill[]; }> = ({ sessions, drills }) => {
     return (
         <div>
-            <h1 className="text-2xl font-bold text-neutral dark:text-white mb-6">My Session History</h1>
-            <div className="bg-white dark:bg-dark-base-200 rounded-xl shadow-md overflow-hidden">
-                <ul className="divide-y divide-base-200 dark:divide-dark-base-300">
+            <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
+                <ul className="divide-y divide-border">
                     {sessions.length > 0 ? sessions.map(session => {
                         const drill = drills.find(d => d.id === session.drillId);
                         const progress = drill 
@@ -275,21 +431,75 @@ const SessionHistory: React.FC<{ sessions: Session[]; drills: Drill[]; }> = ({ s
                             <li key={session.id} className="p-4 grid grid-cols-3 items-center gap-4">
                                 <div className="col-span-1">
                                     <p className="font-semibold text-primary">{session.name}</p>
-                                    <p className="text-sm text-gray-400">{formatDate(session.date)}</p>
+                                    <p className="text-sm text-muted-foreground">{formatDate(session.date)}</p>
                                 </div>
                                 <div className="text-center">
-                                    <p className="text-sm text-gray-400">Exec %</p>
-                                    <p className="font-bold text-lg text-neutral dark:text-white">{calculateExecutionPercentage(session.sets)}%</p>
+                                    <p className="text-sm text-muted-foreground">Exec %</p>
+                                    <p className="font-bold text-lg text-foreground">{calculateExecutionPercentage(session.sets)}%</p>
                                 </div>
-                                <div className={`text-center px-3 py-1 text-sm font-semibold rounded-full ${progress.isSuccess ? 'bg-success/20 text-success' : 'bg-danger/20 text-danger'}`}>
+                                <div className={`text-center px-3 py-1 text-sm font-semibold rounded-full ${progress.isSuccess ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'}`}>
                                     {goalType}: {progress.value}{drill?.goalType.includes('%') ? '%' : ''}
                                 </div>
                             </li>
                         );
                     }) : (
-                        <p className="text-center text-gray-400 p-6">You have not completed any sessions yet.</p>
+                        <p className="text-center text-muted-foreground p-6">You have not completed any sessions yet.</p>
                     )}
                 </ul>
+            </div>
+        </div>
+    );
+};
+
+const KPICard: React.FC<{ title: string; value: string; description: string; }> = ({ title, value, description }) => (
+    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <p className="mt-1 text-3xl font-semibold text-foreground">{value}</p>
+        <p className="text-xs text-muted-foreground mt-1">{description}</p>
+    </div>
+);
+
+const JoinTeam: React.FC = () => {
+    const { currentUser, joinTeamWithCode } = useContext(DataContext)!;
+    const [code, setCode] = useState('');
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        if (!code) {
+            setError('Please enter a team code.');
+            setLoading(false);
+            return;
+        }
+        try {
+            await joinTeamWithCode(code.toUpperCase(), currentUser!.id);
+        } catch (err) {
+            setError((err as Error).message);
+        }
+        setLoading(false);
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="w-full max-w-md p-8 space-y-6 bg-card border border-border rounded-lg shadow-lg text-center">
+                <h1 className="text-2xl font-bold text-foreground">Join a Team</h1>
+                <p className="text-muted-foreground">You're not on a team yet. Enter a code from your coach to join.</p>
+                <form className="space-y-4" onSubmit={handleSubmit}>
+                    {error && <p className="text-destructive text-sm">{error}</p>}
+                    <input
+                        type="text"
+                        placeholder="Enter Team Code"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-secondary focus:border-secondary sm:text-sm uppercase tracking-widest text-center font-mono"
+                    />
+                    <button type="submit" disabled={loading} className="w-full bg-primary text-primary-foreground py-2 rounded-md font-semibold disabled:opacity-50">
+                        {loading ? 'Joining...' : 'Join Team'}
+                    </button>
+                </form>
             </div>
         </div>
     );
@@ -301,18 +511,26 @@ export const PlayerView: React.FC = () => {
         currentUser, 
         getAssignedDrillsForPlayerToday, 
         getSessionsForPlayer,
+        getSessionsForTeam,
         getDrillsForTeam,
+        getGoalsForPlayer,
+        getTeamGoals,
         logSession
     } = useContext(DataContext)!;
 
     const [drillToLog, setDrillToLog] = useState<Drill | null>(null);
+    const [lastSavedSession, setLastSavedSession] = useState<Session | null>(null);
 
     const player = currentUser as Player;
-    const teamId = player.teamIds[0]; // Assuming player is on one team for simplicity
+    const teamId = player.teamIds.length > 0 ? player.teamIds[0] : undefined; 
 
-    const assignedDrills = useMemo(() => getAssignedDrillsForPlayerToday(player.id, teamId), [player.id, teamId, getAssignedDrillsForPlayerToday]);
+    const assignedDrills = useMemo(() => teamId ? getAssignedDrillsForPlayerToday(player.id, teamId) : [], [player.id, teamId, getAssignedDrillsForPlayerToday]);
     const sessions = useMemo(() => getSessionsForPlayer(player.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [player.id, getSessionsForPlayer]);
-    const allTeamDrills = useMemo(() => getDrillsForTeam(teamId), [teamId, getDrillsForTeam]);
+    const teamSessions = useMemo(() => teamId ? getSessionsForTeam(teamId) : [], [teamId, getSessionsForTeam]);
+    const allTeamDrills = useMemo(() => teamId ? getDrillsForTeam(teamId) : [], [teamId, getDrillsForTeam]);
+    const goals = useMemo(() => getGoalsForPlayer(player.id), [player.id, getGoalsForPlayer]);
+    const teamGoals = useMemo(() => teamId ? getTeamGoals(teamId) : [], [teamId, getTeamGoals]);
+
 
     const handleStartAssignedSession = (drill: Drill) => {
         setDrillToLog(drill);
@@ -329,12 +547,20 @@ export const PlayerView: React.FC = () => {
     }
 
     const handleLogSession = (sessionData: { name: string; drillId?: string; sets: SetResult[] }) => {
-        logSession({
+        if (!teamId) return;
+        const newSession = logSession({
             ...sessionData,
             playerId: player.id,
             teamId: teamId,
             date: new Date().toISOString()
         });
+        if (newSession) {
+            setLastSavedSession(newSession);
+        }
+    };
+    
+    const handleCloseAnimation = () => {
+        setLastSavedSession(null);
         setCurrentView('dashboard');
     };
 
@@ -345,16 +571,27 @@ export const PlayerView: React.FC = () => {
         { name: 'Analytics', icon: <ChartBarIcon />, view: 'analytics' },
     ];
     
+     const pageTitles: { [key: string]: string } = {
+        dashboard: `Welcome, ${player.name.split(' ')[0]}!`,
+        log_session: drillToLog ? `Log: ${drillToLog.name}` : 'Log Ad-Hoc Session',
+        history: 'My Session History',
+        analytics: 'My Analytics'
+    };
+    
     const analyticsData = useMemo(() => {
-        const reversedSessions = [...sessions].reverse();
-        const executionData = reversedSessions.map(s => ({
-            name: formatDate(s.date, { month: 'short', day: 'numeric' }),
-            'Execution %': calculateExecutionPercentage(s.sets)
-        }));
+        const chronoSessions = [...sessions].reverse();
+        const allSets = sessions.flatMap(s => s.sets);
 
-        const hardHitData = reversedSessions.map(s => ({
+        const kpi = {
+            execPct: calculateExecutionPercentage(allSets),
+            hardHitPct: calculateHardHitPercentage(allSets),
+            contactPct: 100 - calculateStrikeoutPercentage(allSets),
+        };
+
+        const performanceOverTimeData = chronoSessions.map(s => ({
             name: formatDate(s.date, { month: 'short', day: 'numeric' }),
-            'Hard Hit %': calculateHardHitPercentage(s.sets)
+            'Execution %': calculateExecutionPercentage(s.sets),
+            'Hard Hit %': calculateHardHitPercentage(s.sets),
         }));
         
         const drillSuccessMap = new Map<string, { success: number, total: number }>();
@@ -364,20 +601,93 @@ export const PlayerView: React.FC = () => {
                 const { isSuccess } = getSessionGoalProgress(session, drill);
                 const entry = drillSuccessMap.get(drill.name) || { success: 0, total: 0 };
                 entry.total++;
-                if (isSuccess) {
-                    entry.success++;
-                }
+                if (isSuccess) entry.success++;
                 drillSuccessMap.set(drill.name, entry);
             }
         });
-
         const drillSuccessData = Array.from(drillSuccessMap.entries()).map(([name, data]) => ({
             name,
-            'Success Rate': Math.round((data.success / data.total) * 100)
+            'Success Rate': data.total > 0 ? Math.round((data.success / data.total) * 100) : 0,
         }));
         
-        return { playerExecutionData: executionData, drillSuccessData, hardHitData };
+        const byDrillType: { [key in DrillType]?: { executed: number, attempted: number } } = {};
+        const byPitchType: { [key in PitchType]?: { executed: number, attempted: number } } = {};
+        const byCount: { [key in CountSituation]: { executed: number, attempted: number } } = { 'Ahead': { executed: 0, attempted: 0 }, 'Even': { executed: 0, attempted: 0 }, 'Behind': { executed: 0, attempted: 0 } };
+        const byZone: { [key in TargetZone]?: { executed: number, attempted: number } } = {};
+
+        sessions.forEach(session => {
+            let drillType: DrillType | undefined;
+            if (session.drillId) {
+                const drill = allTeamDrills.find(d => d.id === session.drillId);
+                drillType = drill?.drillType;
+            } else if (DRILL_TYPES.includes(session.name as DrillType)) {
+                drillType = session.name as DrillType;
+            }
+
+            session.sets.forEach(set => {
+                if (drillType) {
+                    if (!byDrillType[drillType]) byDrillType[drillType] = { executed: 0, attempted: 0 };
+                    byDrillType[drillType]!.executed += set.repsExecuted;
+                    byDrillType[drillType]!.attempted += set.repsAttempted;
+                }
+
+                const situation = set.countSituation || 'Even';
+                byCount[situation].executed += set.repsExecuted;
+                byCount[situation].attempted += set.repsAttempted;
+
+                if (set.pitchTypes && set.pitchTypes.length > 0) {
+                    const repsPerType = set.repsAttempted / set.pitchTypes.length;
+                    const execPerType = set.repsExecuted / set.pitchTypes.length;
+                    set.pitchTypes.forEach(pitch => {
+                        if (!byPitchType[pitch]) byPitchType[pitch] = { executed: 0, attempted: 0 };
+                        byPitchType[pitch]!.executed += execPerType;
+                        byPitchType[pitch]!.attempted += repsPerType;
+                    });
+                }
+
+                if (set.targetZones && set.targetZones.length > 0) {
+                    const repsPerZone = set.repsAttempted / set.targetZones.length;
+                    const execPerZone = set.repsExecuted / set.targetZones.length;
+                    set.targetZones.forEach(zone => {
+                        if (!byZone[zone]) byZone[zone] = { executed: 0, attempted: 0 };
+                        byZone[zone]!.executed += execPerZone;
+                        byZone[zone]!.attempted += repsPerZone;
+                    });
+                }
+            });
+        });
+
+        const calculateBreakdownData = (data: { [key: string]: { executed: number, attempted: number } | undefined }) => {
+            return Object.entries(data)
+                .map(([name, values]) => ({
+                    name,
+                    reps: Math.round(values!.attempted),
+                    execution: values!.attempted > 0 ? Math.round((values!.executed / values!.attempted) * 100) : 0,
+                }))
+                .filter(item => item.reps > 0)
+                .sort((a, b) => b.execution - a.execution);
+        };
+        
+        const byDrillTypeData = calculateBreakdownData(byDrillType);
+        const byPitchTypeData = calculateBreakdownData(byPitchType);
+        const byCountData = calculateBreakdownData(byCount);
+        const byZoneData = calculateBreakdownData(byZone).map(d => ({...d, zone: d.name as TargetZone, topPlayers: []}));
+        
+        return { kpi, performanceOverTimeData, drillSuccessData, byDrillTypeData, byPitchTypeData, byCountData, byZoneData };
     }, [sessions, allTeamDrills]);
+
+    if (!teamId) {
+        return <JoinTeam />;
+    }
+
+    const headerContent = currentView === 'dashboard' ? (
+        <button 
+            onClick={handleStartAdHocSession} 
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-2 px-4 rounded-lg text-sm shadow-sm transition-transform hover:scale-105"
+        >
+            Start Ad-Hoc Session
+        </button>
+    ) : null;
 
     const renderContent = () => {
         switch(currentView) {
@@ -387,8 +697,10 @@ export const PlayerView: React.FC = () => {
                     assignedDrills={assignedDrills}
                     recentSessions={sessions}
                     drills={allTeamDrills}
+                    goals={goals}
+                    teamGoals={teamGoals}
+                    teamSessions={teamSessions}
                     onStartAssignedSession={handleStartAssignedSession}
-                    onStartAdHocSession={handleStartAdHocSession}
                 />;
             case 'log_session':
                 return <LogSession assignedDrill={drillToLog} onSave={handleLogSession} onCancel={handleCancelLogSession} />;
@@ -396,13 +708,51 @@ export const PlayerView: React.FC = () => {
                 return <SessionHistory sessions={sessions} drills={allTeamDrills} />;
             case 'analytics':
                  return (
-                    <div>
-                        <h1 className="text-2xl font-bold text-neutral dark:text-white mb-6">My Analytics</h1>
+                    <div className="space-y-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="lg:col-span-1 flex flex-col gap-4">
+                                <KPICard title="Overall Execution %" value={`${analyticsData.kpi.execPct}%`} description="Successfully executed reps vs. total reps." />
+                                <KPICard title="Overall Hard Hit %" value={`${analyticsData.kpi.hardHitPct}%`} description="Percentage of reps hit hard." />
+                                <KPICard title="Overall Contact %" value={`${analyticsData.kpi.contactPct}%`} description="Percentage of reps without a strikeout." />
+                            </div>
+                            <div className="lg:col-span-2">
+                                <PlayerRadarChart sessions={sessions} playerName={player.name} />
+                            </div>
+                        </div>
+
                         <AnalyticsCharts 
-                            playerExecutionData={analyticsData.playerExecutionData}
+                            performanceOverTimeData={analyticsData.performanceOverTimeData}
                             drillSuccessData={analyticsData.drillSuccessData}
-                            hardHitData={analyticsData.hardHitData}
                         />
+
+                        <div>
+                            <h2 className="text-2xl font-bold text-foreground mb-4">Performance Breakdowns</h2>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
+                                <div className="lg:col-span-1">
+                                    <StrikeZoneHeatmap data={analyticsData.byZoneData} battingSide={player.profile.bats} />
+                                </div>
+                                <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 content-start">
+                                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                                        <h3 className="text-lg font-bold text-primary mb-4">By Drill Type</h3>
+                                        <div className="space-y-4">
+                                            {analyticsData.byDrillTypeData.length > 0 ? analyticsData.byDrillTypeData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} />) : <p className="text-muted-foreground text-center py-4">No data available.</p>}
+                                        </div>
+                                    </div>
+                                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                                        <h3 className="text-lg font-bold text-primary mb-4">By Pitch Type</h3>
+                                        <div className="space-y-4">
+                                            {analyticsData.byPitchTypeData.length > 0 ? analyticsData.byPitchTypeData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-accent" />) : <p className="text-muted-foreground text-center py-4">Log pitch types to see this breakdown.</p>}
+                                        </div>
+                                    </div>
+                                     <div className="bg-card border border-border p-4 rounded-lg shadow-sm md:col-span-2">
+                                        <h3 className="text-lg font-bold text-primary mb-4">By Count</h3>
+                                        <div className="space-y-4">
+                                            {analyticsData.byCountData.length > 0 ? analyticsData.byCountData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-secondary" />) : <p className="text-muted-foreground text-center py-4">No data available.</p>}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 );
             default:
@@ -411,12 +761,17 @@ export const PlayerView: React.FC = () => {
     };
 
     return (
-        <Dashboard 
-            navItems={navItems} 
-            currentView={currentView} 
-            setCurrentView={setCurrentView}
-        >
-            {renderContent()}
-        </Dashboard>
+        <>
+            <Dashboard 
+                navItems={navItems} 
+                currentView={currentView} 
+                setCurrentView={setCurrentView}
+                pageTitle={pageTitles[currentView]}
+                headerContent={headerContent}
+            >
+                {renderContent()}
+            </Dashboard>
+            <SessionSaveAnimation session={lastSavedSession} onClose={handleCloseAnimation} />
+        </>
     );
 };
