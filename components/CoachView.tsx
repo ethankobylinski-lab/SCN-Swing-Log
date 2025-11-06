@@ -862,38 +862,68 @@ const DrillList: React.FC<{
 
     return (
         <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {drills.map(drill => (
-                    <div key={drill.id} className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col">
-                        <div className="flex-grow space-y-2">
-                            <h3 className="text-lg font-bold text-primary">{drill.name}</h3>
-                            <p className="text-sm text-muted-foreground flex-grow">{drill.description}</p>
-                        </div>
-                        <div className="text-xs text-card-foreground pt-2 mt-2 border-t border-border">
-                            <p><strong>Goal:</strong> {drill.goalType} >= {drill.goalTargetValue}{drill.goalType.includes('%') ? '%' : ''}</p>
-                            <p><strong>Volume:</strong> {drill.sets} sets of {drill.repsPerSet} reps</p>
-                        </div>
-                        <button onClick={() => setDrillToAssign(drill)} className="w-full mt-4 bg-secondary/20 hover:bg-secondary/30 text-secondary font-bold py-2 px-4 rounded-lg text-sm">
-                            Assign Drill
-                        </button>
-                    </div>
-                ))}
-                 {drills.length === 0 && <p className="text-muted-foreground md:col-span-3 text-center py-4">No drills created yet.</p>}
-            </div>
-            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create New Drill">
-                <DrillForm onSave={createDrill} onClose={() => setIsCreateModalOpen(false)} />
-            </Modal>
-            {drillToAssign && (
-                 <AssignDrillModal 
-                    isOpen={!!drillToAssign}
-                    onClose={() => setDrillToAssign(null)}
-                    drill={drillToAssign}
-                    players={players}
-                    onAssign={handleAssign}
-                 />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {drills.map((drill) => (
+              <div
+                key={drill.id}
+                className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col"
+              >
+                <div className="flex-grow space-y-2">
+                  <h3 className="text-lg font-bold text-primary">{drill.name}</h3>
+                  <p className="text-sm text-muted-foreground flex-grow">
+                    {drill.description}
+                  </p>
+                </div>
+      
+                <div className="text-xs text-card-foreground pt-2 mt-2 border-t border-border">
+                  <p>
+                    <strong>Goal:</strong>{" "}
+                    {String(drill.goalType)}{" "}
+                    {"\u2265"}{" "}
+                    {drill.goalTargetValue}
+                    {String(drill.goalType).includes("%") ? "%" : ""}
+                  </p>
+                  <p>
+                    <strong>Volume:</strong> {drill.sets} sets of {drill.repsPerSet} reps
+                  </p>
+                </div>
+      
+                <button
+                  onClick={() => setDrillToAssign(drill)}
+                  className="w-full mt-4 bg-secondary/20 hover:bg-secondary/30 text-secondary font-bold py-2 px-4 rounded-lg text-sm"
+                >
+                  Assign Drill
+                </button>
+              </div>
+            ))}
+      
+            {drills.length === 0 && (
+              <p className="text-muted-foreground md:col-span-3 text-center py-4">
+                No drills created yet.
+              </p>
             )}
+          </div>
+      
+          <Modal
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            title="Create New Drill"
+          >
+            <DrillForm onSave={createDrill} onClose={() => setIsCreateModalOpen(false)} />
+          </Modal>
+      
+          {drillToAssign && (
+            <AssignDrillModal
+              isOpen={!!drillToAssign}
+              onClose={() => setDrillToAssign(null)}
+              drill={drillToAssign}
+              players={players}
+              onAssign={handleAssign}
+            />
+          )}
         </div>
-    );
+      );
+      
 }
 
 const CreateTeamForm: React.FC<{ onSave: (teamName: string, seasonYear: number) => void }> = ({ onSave }) => {

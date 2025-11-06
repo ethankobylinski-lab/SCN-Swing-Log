@@ -1,69 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Baseball Hitting Tracker</title>
+
+    <!-- Fonts & Tailwind -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap"
+      rel="stylesheet"
+    />
     <script src="https://cdn.tailwindcss.com"></script>
+
     <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {
-          container: {
-            center: true,
-            padding: {
-              DEFAULT: '1rem',
-              sm: '2rem',
-              lg: '4rem',
-              xl: '5rem',
-            },
-          },
+          container: { center: true, padding: { DEFAULT: '1rem', sm: '2rem', lg: '4rem', xl: '5rem' } },
           extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
+            fontFamily: { sans: ['Inter', 'sans-serif'] },
             colors: {
               border: 'hsl(var(--border))',
               input: 'hsl(var(--input))',
               ring: 'hsl(var(--ring))',
               background: 'hsl(var(--background))',
               foreground: 'hsl(var(--foreground))',
-              primary: {
-                DEFAULT: 'hsl(var(--primary))',
-                foreground: 'hsl(var(--primary-foreground))',
-              },
-              secondary: {
-                DEFAULT: 'hsl(var(--secondary))',
-                foreground: 'hsl(var(--secondary-foreground))',
-              },
-              accent: {
-                DEFAULT: 'hsl(var(--accent))',
-                foreground: 'hsl(var(--accent-foreground))',
-              },
-              destructive: {
-                DEFAULT: 'hsl(var(--destructive))',
-                foreground: 'hsl(var(--destructive-foreground))',
-              },
-              success: {
-                DEFAULT: 'hsl(var(--success))',
-                foreground: 'hsl(var(--success-foreground))',
-              },
-              muted: {
-                DEFAULT: 'hsl(var(--muted))',
-                foreground: 'hsl(var(--muted-foreground))',
-              },
-              popover: {
-                DEFAULT: 'hsl(var(--popover))',
-                foreground: 'hsl(var(--popover-foreground))',
-              },
-              card: {
-                DEFAULT: 'hsl(var(--card))',
-                foreground: 'hsl(var(--card-foreground))',
-              },
+              primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+              secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+              accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+              destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+              success: { DEFAULT: 'hsl(var(--success))', foreground: 'hsl(var(--success-foreground))' },
+              muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+              popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
+              card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
             },
             borderRadius: {
               lg: `var(--radius)`,
@@ -72,12 +43,13 @@
             },
             boxShadow: {
               'glow-primary': '0 0 15px 5px rgba(var(--primary-rgb), 0.3)',
-            }
+            },
           },
         },
-      }
+      };
     </script>
-     <style>
+
+    <style>
       :root {
         --background: 0 0% 100%;
         --foreground: 222.2 47.4% 11.2%;
@@ -103,7 +75,6 @@
         --ring: 215 20.2% 65.1%;
         --radius: 0.75rem;
       }
-      
       .dark {
         --background: 224 71% 4%;
         --foreground: 213 31% 91%;
@@ -129,26 +100,10 @@
         --ring: 216 34% 17%;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "recharts": "https://aistudiocdn.com/recharts@^3.3.0",
-    "firebase/app": "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js",
-    "firebase/functions": "https://www.gstatic.com/firebasejs/12.5.0/firebase-functions.js",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.5.0/"
-  }
-}
-</script>
+  </head>
 
-</head>
   <body class="bg-background text-foreground font-sans antialiased">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
