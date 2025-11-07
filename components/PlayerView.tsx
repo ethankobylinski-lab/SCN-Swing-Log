@@ -15,8 +15,19 @@ import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
 import { BreakdownBar } from './BreakdownBar';
 import { SessionSaveAnimation } from './SessionSaveAnimation';
 
-const GoalProgress: React.FC<{ goal: PersonalGoal; sessions: Session[], drills: Drill[], onDelete: (goalId: string) => void; }> = ({ goal, sessions, drills, onDelete }) => {
+const GoalProgress: React.FC<{ goal: PersonalGoal; sessions: Session[], drills: Drill[], onDelete: (goalId: string) => Promise<void>; }> = ({ goal, sessions, drills, onDelete }) => {
     const currentValue = getCurrentMetricValue(goal, sessions, drills);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleDelete = async () => {
+        if (isDeleting) return;
+        setIsDeleting(true);
+        try {
+            await onDelete(goal.id);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
     
     let progress = 0;
     if (goal.targetValue > 0) {
@@ -34,13 +45,20 @@ const GoalProgress: React.FC<{ goal: PersonalGoal; sessions: Session[], drills: 
     const displayTarget = isPercentage ? `${goal.targetValue}%` : goal.targetValue;
 
     return (
-        <div className="bg-muted/50 p-3 rounded-lg">
-            <div className="flex justify-between items-start">
+        <div className="bg-card border border-border/60 p-4 rounded-xl space-y-3 shadow-sm">
+            <div className="flex justify-between items-start gap-4">
                 <div>
                     <h4 className="font-semibold text-card-foreground">{formatGoalName(goal)}</h4>
                     <p className="text-xs text-muted-foreground">Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
                 </div>
-                <button onClick={() => onDelete(goal.id)} className="text-muted-foreground hover:text-destructive text-lg font-bold">&times;</button>
+                <button
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    aria-label="Delete goal"
+                    className="text-muted-foreground hover:text-destructive text-lg font-bold disabled:opacity-50"
+                >
+                    {isDeleting ? '...' : '\u00d7'}
+                </button>
             </div>
             <div className="flex items-center gap-3 mt-2">
                 <div className="w-full bg-background rounded-full h-2.5">
@@ -71,7 +89,7 @@ const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: 
     const displayTarget = isPercentage ? `${goal.targetValue}%` : goal.targetValue;
 
     return (
-        <div className="bg-muted/50 p-3 rounded-lg">
+        <div className="bg-card border border-border/60 p-4 rounded-xl space-y-3 shadow-sm">
             <div>
                 <h4 className="font-semibold text-card-foreground">{goal.description}</h4>
                 <p className="text-xs text-muted-foreground">{formatTeamGoalName(goal)} | Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
@@ -99,6 +117,10 @@ const PlayerDashboard: React.FC<{
     
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
     const { createGoal, deleteGoal } = useContext(DataContext)!;
+    const teamId = player.teamIds.length > 0 ? player.teamIds[0] : undefined;
+    const [goalFormError, setGoalFormError] = useState<string | null>(null);
+    const [goalListError, setGoalListError] = useState<string | null>(null);
+    const [isSavingGoal, setIsSavingGoal] = useState(false);
     
     const overallExecutionPct = useMemo(() => {
         const allSets = recentSessions.flatMap(s => s.sets);
@@ -106,15 +128,40 @@ const PlayerDashboard: React.FC<{
         return calculateExecutionPercentage(allSets);
     }, [recentSessions]);
 
-    const handleCreateGoal = (goalData: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate'>) => {
-        createGoal({
-            ...goalData,
-            playerId: player.id,
-            status: 'Active',
-            startDate: new Date().toISOString()
-        });
-        setIsGoalModalOpen(false);
-    }
+    const handleCreateGoal = async (goalData: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate' | 'teamId'>) => {
+        if (!teamId) {
+            setGoalFormError('Join a team before setting goals.');
+            return;
+        }
+
+        setGoalFormError(null);
+        setIsSavingGoal(true);
+        try {
+            await createGoal({
+                ...goalData,
+                playerId: player.id,
+                teamId,
+                status: 'Active',
+                startDate: new Date().toISOString()
+            });
+            setIsGoalModalOpen(false);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to save this goal. Please try again.';
+            setGoalFormError(message);
+        } finally {
+            setIsSavingGoal(false);
+        }
+    };
+
+    const handleDeleteGoal = async (goalId: string) => {
+        setGoalListError(null);
+        try {
+            await deleteGoal(goalId);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to delete this goal. Please try again.';
+            setGoalListError(message);
+        }
+    };
     
     const StatCard: React.FC<{title: string; value: string;}> = ({title, value}) => (
         <div className="bg-card border border-border p-4 rounded-lg shadow-sm text-center">
@@ -151,8 +198,9 @@ const PlayerDashboard: React.FC<{
                                 ))}
                             </div>
                         ) : (
-                            <div className="bg-card border border-border p-6 rounded-lg shadow-sm text-center text-muted-foreground">
-                                <p>No drills assigned for today. Great job staying on top of your work!</p>
+                            <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
+                                <p className="font-medium">No drills assigned for today.</p>
+                                <p className="text-sm">Enjoy the breather or log an ad-hoc session to stay sharp.</p>
                             </div>
                         )}
                     </div>
@@ -164,8 +212,9 @@ const PlayerDashboard: React.FC<{
                                     {teamGoals.map(g => <TeamGoalProgress key={g.id} goal={g} sessions={teamSessions} drills={drills} />)}
                                 </div>
                             ) : (
-                                <div className="text-center text-muted-foreground py-6">
-                                    <p>Your coach hasn't set any team goals yet.</p>
+                                <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
+                                    <p className="font-medium">No team goals just yet.</p>
+                                    <p className="text-sm">Once your coach sets one, it will show up here.</p>
                                 </div>
                             )}
                         </div>
@@ -174,31 +223,58 @@ const PlayerDashboard: React.FC<{
                  <div>
                     <div className="flex justify-between items-center mb-4">
                          <h2 className="text-xl font-bold text-foreground">My Goals</h2>
-                         <button onClick={() => setIsGoalModalOpen(true)} className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-1 px-3 text-sm rounded-lg">+ Set Goal</button>
+                         <button
+                            onClick={() => {
+                                setGoalFormError(null);
+                                setIsGoalModalOpen(true);
+                            }}
+                            className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-1 px-3 text-sm rounded-lg"
+                        >
+                            + Set Goal
+                        </button>
                     </div>
                      <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                        {goalListError && <p className="text-sm text-destructive mb-3">{goalListError}</p>}
                         {goals.length > 0 ? (
                              <div className="space-y-4">
-                                {goals.map(g => <GoalProgress key={g.id} goal={g} sessions={recentSessions} drills={drills} onDelete={deleteGoal} />)}
+                                {goals.map(g => (
+                                    <GoalProgress
+                                        key={g.id}
+                                        goal={g}
+                                        sessions={recentSessions}
+                                        drills={drills}
+                                        onDelete={handleDeleteGoal}
+                                    />
+                                ))}
                             </div>
                         ) : (
-                             <div className="text-center text-muted-foreground py-6">
-                                <p>You haven't set any goals yet.</p>
-                                <p className="text-sm">Click "+ Set Goal" to get started!</p>
+                             <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
+                                <p className="font-medium">You haven’t set any personal goals yet.</p>
+                                <p className="text-sm">Tap “+ Set Goal” to lock in a target for this week.</p>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
 
-            <Modal isOpen={isGoalModalOpen} onClose={() => setIsGoalModalOpen(false)} title="Set a New Goal">
-                <GoalForm onSave={handleCreateGoal} />
+            <Modal
+                isOpen={isGoalModalOpen}
+                onClose={() => {
+                    if (isSavingGoal) return;
+                    setGoalFormError(null);
+                    setIsGoalModalOpen(false);
+                }}
+                title="Set a New Goal"
+            >
+                <GoalForm onSave={handleCreateGoal} isSaving={isSavingGoal} errorMessage={goalFormError} />
             </Modal>
         </div>
     );
 };
 
-const GoalForm: React.FC<{ onSave: (data: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate'>) => void; }> = ({ onSave }) => {
+type GoalFormValues = Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate' | 'teamId'>;
+
+const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | void; isSaving?: boolean; errorMessage?: string | null; }> = ({ onSave, isSaving = false, errorMessage }) => {
     const [metric, setMetric] = useState<GoalType>('Execution %');
     const [targetValue, setTargetValue] = useState(85);
     const [targetDate, setTargetDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]); // 30 days from now
@@ -209,20 +285,21 @@ const GoalForm: React.FC<{ onSave: (data: Omit<PersonalGoal, 'id' | 'playerId' |
         setTargetZones(prev => prev.includes(zone) ? prev.filter(z => z !== zone) : [...prev, zone]);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const goalData: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate'> = {
+        const goalData: GoalFormValues = {
             metric,
             targetValue,
             targetDate,
         };
         if(drillType) goalData.drillType = drillType;
         if(targetZones.length > 0) goalData.targetZones = targetZones;
-        onSave(goalData);
+        await onSave(goalData);
     };
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-muted-foreground">Metric</label>
@@ -262,7 +339,13 @@ const GoalForm: React.FC<{ onSave: (data: Omit<PersonalGoal, 'id' | 'playerId' |
             </div>
 
             <div className="flex justify-end pt-4">
-                 <button type="submit" className="py-2 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md">Save Goal</button>
+                 <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="py-2 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md disabled:opacity-50"
+                >
+                    {isSaving ? 'Saving...' : 'Save Goal'}
+                </button>
             </div>
         </form>
     );
@@ -270,9 +353,11 @@ const GoalForm: React.FC<{ onSave: (data: Omit<PersonalGoal, 'id' | 'playerId' |
 
 const LogSession: React.FC<{
     assignedDrill: Drill | null;
-    onSave: (sessionData: { name: string; drillId?: string; sets: SetResult[] }) => void;
+    onSave: (sessionData: { name: string; drillId?: string; sets: SetResult[] }) => Promise<void>;
     onCancel: () => void;
-}> = ({ assignedDrill, onSave, onCancel }) => {
+    isSaving: boolean;
+    errorMessage?: string | null;
+}> = ({ assignedDrill, onSave, onCancel, isSaving, errorMessage }) => {
     
     const isAssigned = !!assignedDrill;
     const initialSet: SetResult = { setNumber: 1, repsAttempted: assignedDrill?.repsPerSet || 10, repsExecuted: 0, hardHits: 0, strikeouts: 0, grade: 5 };
@@ -302,9 +387,10 @@ const LogSession: React.FC<{
         setCurrentSet({ ...initialSet, setNumber: newLoggedSets.length + 1 });
     };
 
-    const handleSaveSession = () => {
+    const handleSaveSession = async () => {
+        if (isSaving) return;
         const finalSets = loggedSets.length > 0 ? loggedSets : [{...currentSet, targetZones, pitchTypes, outs, countSituation: count, baseRunners: runners}];
-        onSave({
+        await onSave({
             drillId: assignedDrill?.id,
             name: assignedDrill?.name || drillType,
             sets: finalSets,
@@ -406,9 +492,17 @@ const LogSession: React.FC<{
                 </div>
              )}
 
+            {errorMessage && (
+                <div className="text-center text-sm text-destructive">
+                    {errorMessage}
+                </div>
+            )}
+
             <div className="flex justify-end gap-4">
                 <button onClick={onCancel} className="bg-muted hover:bg-muted/80 text-foreground font-bold py-2 px-6 rounded-lg">Cancel</button>
-                <button onClick={handleSaveSession} className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-2 px-6 rounded-lg">Save Session</button>
+                <button onClick={handleSaveSession} disabled={isSaving} className="bg-secondary hover:bg-secondary/90 disabled:opacity-60 text-secondary-foreground font-bold py-2 px-6 rounded-lg">
+                    {isSaving ? 'Saving…' : 'Save Session'}
+                </button>
             </div>
         </div>
     );
@@ -520,6 +614,8 @@ export const PlayerView: React.FC = () => {
 
     const [drillToLog, setDrillToLog] = useState<Drill | null>(null);
     const [lastSavedSession, setLastSavedSession] = useState<Session | null>(null);
+    const [isSavingSession, setIsSavingSession] = useState(false);
+    const [logSessionError, setLogSessionError] = useState<string | null>(null);
 
     const player = currentUser as Player;
     const teamId = player.teamIds.length > 0 ? player.teamIds[0] : undefined; 
@@ -533,34 +629,54 @@ export const PlayerView: React.FC = () => {
 
 
     const handleStartAssignedSession = (drill: Drill) => {
+        setLogSessionError(null);
         setDrillToLog(drill);
         setCurrentView('log_session');
     };
     
     const handleStartAdHocSession = () => {
+        setLogSessionError(null);
         setDrillToLog(null);
         setCurrentView('log_session');
     };
 
     const handleCancelLogSession = () => {
+        setLogSessionError(null);
+        setIsSavingSession(false);
         setCurrentView('dashboard');
     }
 
-    const handleLogSession = (sessionData: { name: string; drillId?: string; sets: SetResult[] }) => {
-        if (!teamId) return;
-        const newSession = logSession({
-            ...sessionData,
-            playerId: player.id,
-            teamId: teamId,
-            date: new Date().toISOString()
-        });
-        if (newSession) {
-            setLastSavedSession(newSession);
+    const handleLogSession = async (sessionData: { name: string; drillId?: string; sets: SetResult[] }) => {
+        if (!teamId) {
+            setLogSessionError('Join a team before logging sessions.');
+            return;
+        }
+
+        setIsSavingSession(true);
+        setLogSessionError(null);
+
+        try {
+            const newSession = await logSession({
+                ...sessionData,
+                playerId: player.id,
+                teamId: teamId,
+                date: new Date().toISOString(),
+            });
+
+            if (newSession) {
+                setLastSavedSession(newSession);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to save this session. Please try again.';
+            setLogSessionError(message);
+        } finally {
+            setIsSavingSession(false);
         }
     };
     
     const handleCloseAnimation = () => {
         setLastSavedSession(null);
+        setLogSessionError(null);
         setCurrentView('dashboard');
     };
 
@@ -703,7 +819,15 @@ export const PlayerView: React.FC = () => {
                     onStartAssignedSession={handleStartAssignedSession}
                 />;
             case 'log_session':
-                return <LogSession assignedDrill={drillToLog} onSave={handleLogSession} onCancel={handleCancelLogSession} />;
+                return (
+                    <LogSession
+                        assignedDrill={drillToLog}
+                        onSave={handleLogSession}
+                        onCancel={handleCancelLogSession}
+                        isSaving={isSavingSession}
+                        errorMessage={logSessionError}
+                    />
+                );
             case 'history':
                 return <SessionHistory sessions={sessions} drills={allTeamDrills} />;
             case 'analytics':

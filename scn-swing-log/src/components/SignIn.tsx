@@ -1,52 +1,54 @@
 import { useState } from "react";
-import { auth, ensureRecaptcha } from "../firebaseConfig";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPhoneNumber } from "firebase/auth";
+import { auth } from "../firebaseConfig";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
 
 export default function SignIn() {
-  const [email, setEmail] = useState(""); const [pw, setPw] = useState("");
-  const [phone, setPhone] = useState(""); const [otp, setOtp] = useState("");
-  const [confirm, setConfirm] = useState<any>(null); const [err, setErr] = useState<string>("");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState<string>("");
 
   const signInEmail = async () => {
     setErr("");
-    try { await signInWithEmailAndPassword(auth, email, pw); }
-    catch { await createUserWithEmailAndPassword(auth, email, pw); }
+    try {
+      await signInWithEmailAndPassword(auth, email, pw);
+    } catch (e: any) {
+      setErr(e.message ?? "Unable to sign in with those credentials.");
+    }
   };
 
-  const sendOtp = async () => {
+  const createAccount = async () => {
     setErr("");
     try {
-      const verifier = ensureRecaptcha();
-      const confirmation = await signInWithPhoneNumber(auth, phone, verifier);
-      setConfirm(confirmation);
-    } catch (e:any) { setErr(e.message); }
-  };
-
-  const verifyOtp = async () => {
-    setErr("");
-    try { await confirm.confirm(otp); } catch (e:any) { setErr(e.message); }
+      await createUserWithEmailAndPassword(auth, email, pw);
+    } catch (e: any) {
+      setErr(e.message ?? "Unable to create an account with those credentials.");
+    }
   };
 
   return (
-    <div style={{maxWidth:420, margin:"40px auto", display:"grid", gap:12}}>
+    <div style={{ maxWidth: 420, margin: "40px auto", display: "grid", gap: 12 }}>
       <h2>Sign In</h2>
       <div>
-        <input placeholder="email" value={email} onChange={e=>setEmail(e.target.value)} />
-        <input type="password" placeholder="password" value={pw} onChange={e=>setPw(e.target.value)} />
-        <button onClick={signInEmail}>Sign In / Create</button>
+        <input
+          placeholder="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{ display: "block", width: "100%", marginBottom: 8, padding: 8 }}
+        />
+        <input
+          type="password"
+          placeholder="password"
+          value={pw}
+          onChange={(e) => setPw(e.target.value)}
+          style={{ display: "block", width: "100%", marginBottom: 12, padding: 8 }}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={signInEmail}>Sign In</button>
+          <button onClick={createAccount}>Create Account</button>
+        </div>
       </div>
 
-      <div style={{borderTop:"1px solid #eee", paddingTop:12}}>
-        <input placeholder="+1 555 555 5555" value={phone} onChange={e=>setPhone(e.target.value)} />
-        <button onClick={sendOtp}>Send Code</button>
-        {confirm && (<>
-          <input placeholder="SMS code" value={otp} onChange={e=>setOtp(e.target.value)} />
-          <button onClick={verifyOtp}>Verify</button>
-        </>)}
-        <div id="recaptcha-container" />
-      </div>
-
-      {err && <p style={{color:"crimson"}}>{err}</p>}
+      {err && <p style={{ color: "crimson" }}>{err}</p>}
     </div>
   );
 }

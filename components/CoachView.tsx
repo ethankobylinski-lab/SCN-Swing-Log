@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo, useEffect } from 'react';
+import React, { useState, useContext, useMemo, useEffect, useRef } from 'react';
 import { DataContext } from '../contexts/DataContext';
 import { Dashboard } from './Dashboard';
 import { HomeIcon } from './icons/HomeIcon';
@@ -36,6 +36,8 @@ interface CoachAnalyticsData {
         byZone: { zone: TargetZone; execution: number; reps: number; topPlayers: TopPlayer[] }[];
     }
 }
+
+type StatusMessage = { type: 'success' | 'error'; message: string };
 
 const PlayerLeaderboard: React.FC<{ players: TopPlayer[], metricSuffix?: string }> = ({ players, metricSuffix = '%' }) => {
     if (players.length === 0) {
@@ -136,8 +138,19 @@ const CoachAnalyticsPage: React.FC<{ analyticsData: CoachAnalyticsData }> = ({ a
 
 // --- MAIN VIEW COMPONENTS ---
 
-const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: Drill[]; onDelete: (goalId: string) => void }> = ({ goal, sessions, drills, onDelete }) => {
+const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: Drill[]; onDelete: (goalId: string) => Promise<void>; }> = ({ goal, sessions, drills, onDelete }) => {
     const currentValue = getCurrentTeamMetricValue(goal, sessions, drills);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleDelete = async () => {
+        if (isDeleting) return;
+        setIsDeleting(true);
+        try {
+            await onDelete(goal.id);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
     
     let progress = 0;
     if (goal.targetValue > 0) {
@@ -161,7 +174,14 @@ const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: 
                     <h4 className="font-semibold text-card-foreground">{goal.description}</h4>
                     <p className="text-xs text-muted-foreground">{formatTeamGoalName(goal)} | Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
                 </div>
-                <button onClick={() => onDelete(goal.id)} className="text-muted-foreground hover:text-destructive text-lg font-bold">&times;</button>
+                <button
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    aria-label="Delete team goal"
+                    className="text-muted-foreground hover:text-destructive text-lg font-bold disabled:opacity-50"
+                >
+                    {isDeleting ? '...' : '\u00d7'}
+                </button>
             </div>
             <div className="flex items-center gap-3 mt-2">
                 <div className="w-full bg-background rounded-full h-2.5">
@@ -182,6 +202,9 @@ const CoachDashboard: React.FC<{
     
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
     const { createTeamGoal, deleteTeamGoal, activeTeam } = useContext(DataContext)!;
+    const [teamGoalFormError, setTeamGoalFormError] = useState<string | null>(null);
+    const [teamGoalListError, setTeamGoalListError] = useState<string | null>(null);
+    const [isSavingTeamGoal, setIsSavingTeamGoal] = useState(false);
     
     const sessionsLast7Days = useMemo(() => {
         const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
@@ -267,15 +290,38 @@ const CoachDashboard: React.FC<{
         return players.filter(p => !activePlayerIds.has(p.id));
     }, [players, sessions]);
     
-    const handleCreateTeamGoal = (goalData: Omit<TeamGoal, 'id' | 'teamId' | 'status' | 'startDate'>) => {
-        if (!activeTeam) return;
-        createTeamGoal({
-            ...goalData,
-            teamId: activeTeam.id,
-            status: 'Active',
-            startDate: new Date().toISOString()
-        });
-        setIsGoalModalOpen(false);
+    const handleCreateTeamGoal = async (goalData: Omit<TeamGoal, 'id' | 'teamId' | 'status' | 'startDate'>) => {
+        if (!activeTeam) {
+            setTeamGoalFormError('Set up a team before creating goals.');
+            return;
+        }
+
+        setTeamGoalFormError(null);
+        setIsSavingTeamGoal(true);
+        try {
+            await createTeamGoal({
+                ...goalData,
+                teamId: activeTeam.id,
+                status: 'Active',
+                startDate: new Date().toISOString()
+            });
+            setIsGoalModalOpen(false);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to save this team goal. Please try again.';
+            setTeamGoalFormError(message);
+        } finally {
+            setIsSavingTeamGoal(false);
+        }
+    };
+
+    const handleDeleteTeamGoal = async (goalId: string) => {
+        setTeamGoalListError(null);
+        try {
+            await deleteTeamGoal(goalId);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to delete this team goal. Please try again.';
+            setTeamGoalListError(message);
+        }
     };
     
     const StatCard: React.FC<{title: string; value: string; subValue?: string}> = ({title, value, subValue}) => (
@@ -348,11 +394,20 @@ const CoachDashboard: React.FC<{
                     <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-bold text-primary">Active Team Goals</h3>
-                            <button onClick={() => setIsGoalModalOpen(true)} className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-1 px-3 text-sm rounded-lg">+ Set Goal</button>
+                            <button
+                                onClick={() => {
+                                    setTeamGoalFormError(null);
+                                    setIsGoalModalOpen(true);
+                                }}
+                                className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-1 px-3 text-sm rounded-lg"
+                            >
+                                + Set Goal
+                            </button>
                         </div>
                         <div className="space-y-4">
+                             {teamGoalListError && <p className="text-sm text-destructive">{teamGoalListError}</p>}
                              {teamGoals.length > 0 ? teamGoals.map(goal => (
-                                <TeamGoalProgress key={goal.id} goal={goal} sessions={sessions} drills={drills} onDelete={deleteTeamGoal} />
+                                <TeamGoalProgress key={goal.id} goal={goal} sessions={sessions} drills={drills} onDelete={handleDeleteTeamGoal} />
                              )) : <p className="text-muted-foreground text-center py-4">No team goals set yet.</p>}
                         </div>
                     </div>
@@ -374,8 +429,16 @@ const CoachDashboard: React.FC<{
                     </div>
                 </div>
             </div>
-            <Modal isOpen={isGoalModalOpen} onClose={() => setIsGoalModalOpen(false)} title="Set a New Team Goal">
-                <TeamGoalForm onSave={handleCreateTeamGoal} />
+            <Modal
+                isOpen={isGoalModalOpen}
+                onClose={() => {
+                    if (isSavingTeamGoal) return;
+                    setTeamGoalFormError(null);
+                    setIsGoalModalOpen(false);
+                }}
+                title="Set a New Team Goal"
+            >
+                <TeamGoalForm onSave={handleCreateTeamGoal} isSaving={isSavingTeamGoal} errorMessage={teamGoalFormError} />
             </Modal>
         </div>
     );
@@ -558,7 +621,7 @@ const PlayerDetail: React.FC<{ player: Player; sessions: Session[]; drills: Dril
     );
 };
 
-const TeamGoalForm: React.FC<{ onSave: (data: Omit<TeamGoal, 'id' | 'teamId' | 'status' | 'startDate'>) => void; }> = ({ onSave }) => {
+const TeamGoalForm: React.FC<{ onSave: (data: Omit<TeamGoal, 'id' | 'teamId' | 'status' | 'startDate'>) => Promise<void> | void; isSaving?: boolean; errorMessage?: string | null; }> = ({ onSave, isSaving = false, errorMessage }) => {
     const [description, setDescription] = useState('');
     const [metric, setMetric] = useState<GoalType>('Execution %');
     const [targetValue, setTargetValue] = useState(75);
@@ -571,7 +634,7 @@ const TeamGoalForm: React.FC<{ onSave: (data: Omit<TeamGoal, 'id' | 'teamId' | '
         setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         const goalData: Omit<TeamGoal, 'id' | 'teamId' | 'status' | 'startDate'> = {
             description, metric, targetValue, targetDate
@@ -579,11 +642,12 @@ const TeamGoalForm: React.FC<{ onSave: (data: Omit<TeamGoal, 'id' | 'teamId' | '
         if (drillType) goalData.drillType = drillType;
         if (targetZones.length > 0) goalData.targetZones = targetZones;
         if (pitchTypes.length > 0) goalData.pitchTypes = pitchTypes;
-        onSave(goalData);
+        await onSave(goalData);
     };
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
             <div>
                 <label className="block text-sm font-medium text-muted-foreground">Goal Description</label>
                 <input type="text" value={description} onChange={e => setDescription(e.target.value)} required placeholder="e.g., Master Outside Pitches" className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
@@ -636,14 +700,20 @@ const TeamGoalForm: React.FC<{ onSave: (data: Omit<TeamGoal, 'id' | 'teamId' | '
                 </div>
             </div>
             <div className="flex justify-end pt-4">
-                <button type="submit" className="py-2 px-4 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md">Save Goal</button>
+                <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="py-2 px-4 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-50"
+                >
+                    {isSaving ? 'Saving...' : 'Save Goal'}
+                </button>
             </div>
         </form>
     );
 };
 
 const DrillForm: React.FC<{
-    onSave: (drill: Omit<Drill, 'id' | 'teamId'>) => void;
+    onSave: (drill: Omit<Drill, 'id' | 'teamId'>) => Promise<void> | void;
     onClose: () => void;
 }> = ({ onSave, onClose }) => {
     const [drill, setDrill] = useState<Omit<Drill, 'id' | 'teamId'>>({
@@ -651,6 +721,8 @@ const DrillForm: React.FC<{
         countSituation: 'Even', baseRunners: [], outs: 0,
         goalType: 'Execution %', goalTargetValue: 80, repsPerSet: 10, sets: 3
     });
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     const handleMultiSelect = (field: 'targetZones' | 'pitchTypes' | 'baseRunners', value: TargetZone | PitchType | BaseRunner) => {
         setDrill(prev => {
@@ -667,14 +739,24 @@ const DrillForm: React.FC<{
         setDrill(prev => ({...prev, [field]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(drill);
-        onClose();
+        setErrorMessage(null);
+        setIsSaving(true);
+        try {
+            await onSave(drill);
+            onClose();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to save this drill. Please try again.';
+            setErrorMessage(message);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label className="block text-sm font-medium text-muted-foreground">Drill Name</label>
@@ -761,7 +843,9 @@ const DrillForm: React.FC<{
 
             <div className="flex justify-end space-x-3 pt-4 border-t border-border">
                 <button type="button" onClick={onClose} className="py-2 px-4 bg-muted hover:bg-muted/80 rounded-md">Cancel</button>
-                <button type="submit" className="py-2 px-4 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md">Save Drill</button>
+                <button type="submit" disabled={isSaving} className="py-2 px-4 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-60">
+                    {isSaving ? 'Saving...' : 'Save Drill'}
+                </button>
             </div>
         </form>
     );
@@ -772,10 +856,12 @@ const AssignDrillModal: React.FC<{
     onClose: () => void;
     drill: Drill;
     players: Player[];
-    onAssign: (assignment: { playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => void;
+    onAssign: (assignment: { playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => Promise<void> | void;
 }> = ({ isOpen, onClose, drill, players, onAssign }) => {
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
     const [recurringDays, setRecurringDays] = useState<DayOfWeek[]>([]);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const days: DayOfWeek[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     const handlePlayerSelect = (playerId: string) => {
@@ -794,17 +880,28 @@ const AssignDrillModal: React.FC<{
         setRecurringDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (selectedPlayerIds.length === 0 || recurringDays.length === 0) {
-            alert("Please select at least one player and one day.");
+            setErrorMessage("Select at least one player and one day.");
             return;
         }
-        onAssign({
-            playerIds: selectedPlayerIds,
-            isRecurring: true,
-            recurringDays: recurringDays,
-        });
-        onClose();
+        setIsSubmitting(true);
+        setErrorMessage(null);
+        try {
+            await onAssign({
+                playerIds: selectedPlayerIds,
+                isRecurring: true,
+                recurringDays: recurringDays,
+            });
+            setSelectedPlayerIds([]);
+            setRecurringDays([]);
+            onClose();
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to assign this drill. Please try again.';
+            setErrorMessage(message);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -827,6 +924,7 @@ const AssignDrillModal: React.FC<{
                 </div>
 
                 <div>
+                    {errorMessage && <p className="text-sm text-destructive mb-2">{errorMessage}</p>}
                     <h3 className="font-bold text-foreground mb-2">Set Recurring Schedule</h3>
                     <div className="flex justify-center gap-1 sm:gap-2">
                         {days.map(day => (
@@ -839,7 +937,9 @@ const AssignDrillModal: React.FC<{
 
                 <div className="flex justify-end space-x-3 pt-4">
                     <button type="button" onClick={onClose} className="py-2 px-4 bg-muted hover:bg-muted/80 rounded-md">Cancel</button>
-                    <button type="button" onClick={handleSubmit} className="py-2 px-4 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md">Assign Drill</button>
+                    <button type="button" onClick={handleSubmit} disabled={isSubmitting} className="py-2 px-4 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-60">
+                        {isSubmitting ? 'Assigning...' : 'Assign Drill'}
+                    </button>
                 </div>
             </div>
         </Modal>
@@ -849,28 +949,40 @@ const AssignDrillModal: React.FC<{
 const DrillList: React.FC<{ 
     drills: Drill[], 
     players: Player[],
-    createDrill: (drill: Omit<Drill, 'id' | 'teamId'>) => void,
-    assignDrill: (assignment: { drillId: string, playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => void
+    createDrill: (drill: Omit<Drill, 'id' | 'teamId'>) => Promise<void> | void,
+    assignDrill: (assignment: { drillId: string, playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => Promise<void> | void
 }> = ({ drills, players, createDrill, assignDrill }) => {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [drillToAssign, setDrillToAssign] = useState<Drill | null>(null);
 
-    const handleAssign = (assignment: { playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => {
+    const handleAssign = async (assignment: { playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => {
         if (!drillToAssign) return;
-        assignDrill({ drillId: drillToAssign.id, ...assignment });
+        await assignDrill({ drillId: drillToAssign.id, ...assignment });
     };
 
     return (
-        <div>
+        <div className="space-y-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-foreground">Saved Drills</h2>
+              <p className="text-sm text-muted-foreground">Create drills once and reuse them with targeted assignments.</p>
+            </div>
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+            >
+              + New Drill
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {drills.map((drill) => (
               <div
                 key={drill.id}
-                className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col"
+                className="bg-card border border-border p-5 rounded-xl shadow-sm flex flex-col gap-4"
               >
-                <div className="flex-grow space-y-2">
+                <div className="space-y-2">
                   <h3 className="text-lg font-bold text-primary">{drill.name}</h3>
-                  <p className="text-sm text-muted-foreground flex-grow">
+                  <p className="text-sm text-muted-foreground">
                     {drill.description}
                   </p>
                 </div>
@@ -890,7 +1002,7 @@ const DrillList: React.FC<{
       
                 <button
                   onClick={() => setDrillToAssign(drill)}
-                  className="w-full mt-4 bg-secondary/20 hover:bg-secondary/30 text-secondary font-bold py-2 px-4 rounded-lg text-sm"
+                  className="w-full mt-auto bg-secondary/15 hover:bg-secondary/25 text-secondary font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
                 >
                   Assign Drill
                 </button>
@@ -989,6 +1101,10 @@ export const CoachView: React.FC = () => {
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isCreateDrillModalOpen, setIsCreateDrillModalOpen] = useState(false);
     const [activeTeamCode, setActiveTeamCode] = useState<string | null>(null);
+    const [drillStatus, setDrillStatus] = useState<StatusMessage | null>(null);
+    const [assignmentStatus, setAssignmentStatus] = useState<StatusMessage | null>(null);
+    const drillStatusTimeout = useRef<number | null>(null);
+    const assignmentStatusTimeout = useRef<number | null>(null);
     
     const coachTeams = useMemo(() => getTeamsForCoach(currentUser!.id), [currentUser, getTeamsForCoach]);
     
@@ -1014,15 +1130,49 @@ export const CoachView: React.FC = () => {
     }, [sessions]);
 
 
-    const handleCreateDrill = (drillData: Omit<Drill, 'id' | 'teamId'>) => {
-        if (!activeTeam) return;
-        createDrill(drillData, activeTeam.id);
-        setIsCreateDrillModalOpen(false);
+    const setTimedStatus = (
+        setter: React.Dispatch<React.SetStateAction<StatusMessage | null>>,
+        ref: React.MutableRefObject<number | null>,
+        status: StatusMessage,
+    ) => {
+        setter(status);
+        if (ref.current) {
+            window.clearTimeout(ref.current);
+        }
+        ref.current = window.setTimeout(() => {
+            setter(null);
+            ref.current = null;
+        }, 3500);
     };
 
-    const handleAssignDrill = (assignment: { drillId: string, playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => {
+    useEffect(() => {
+        return () => {
+            if (drillStatusTimeout.current) window.clearTimeout(drillStatusTimeout.current);
+            if (assignmentStatusTimeout.current) window.clearTimeout(assignmentStatusTimeout.current);
+        };
+    }, []);
+
+    const handleCreateDrill = async (drillData: Omit<Drill, 'id' | 'teamId'>) => {
         if (!activeTeam) return;
-        createAssignment({ teamId: activeTeam.id, ...assignment });
+        try {
+            await createDrill(drillData, activeTeam.id);
+            setTimedStatus(setDrillStatus, drillStatusTimeout, { type: 'success', message: 'Drill created successfully.' });
+            setIsCreateDrillModalOpen(false);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to create this drill.';
+            setTimedStatus(setDrillStatus, drillStatusTimeout, { type: 'error', message });
+        }
+    };
+
+    const handleAssignDrill = async (assignment: { drillId: string, playerIds: string[], isRecurring: boolean, recurringDays: DayOfWeek[] }) => {
+        if (!activeTeam) return;
+        try {
+            await createAssignment({ teamId: activeTeam.id, ...assignment });
+            setTimedStatus(setAssignmentStatus, assignmentStatusTimeout, { type: 'success', message: 'Drill assigned to players.' });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to assign this drill.';
+            setTimedStatus(setAssignmentStatus, assignmentStatusTimeout, { type: 'error', message });
+        }
     };
 
     const handleCreateTeam = async (teamName: string, seasonYear: number) => {
@@ -1284,7 +1434,21 @@ export const CoachView: React.FC = () => {
                     />
                 )
             )}
-            {currentView === 'drills' && <DrillList drills={drills} players={players} createDrill={handleCreateDrill} assignDrill={handleAssignDrill} />}
+            {currentView === 'drills' && (
+                <div className="space-y-4">
+                    {drillStatus && (
+                        <div className={`rounded-lg border px-4 py-2 text-sm ${drillStatus.type === 'success' ? 'bg-success/10 text-success border-success/30' : 'bg-destructive/10 text-destructive border-destructive/30'}`}>
+                            {drillStatus.message}
+                        </div>
+                    )}
+                    {assignmentStatus && (
+                        <div className={`rounded-lg border px-4 py-2 text-sm ${assignmentStatus.type === 'success' ? 'bg-success/10 text-success border-success/30' : 'bg-destructive/10 text-destructive border-destructive/30'}`}>
+                            {assignmentStatus.message}
+                        </div>
+                    )}
+                    <DrillList drills={drills} players={players} createDrill={handleCreateDrill} assignDrill={handleAssignDrill} />
+                </div>
+            )}
             {currentView === 'analytics' && (
                 teamAnalyticsData ? (
                     <CoachAnalyticsPage analyticsData={teamAnalyticsData} />

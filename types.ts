@@ -20,6 +20,7 @@ export interface Team {
   logoUrl?: string;
   seasonYear: number;
   coachId: string;
+  primaryColor?: string;
 }
 
 // Added JoinCode interface to manage team invitations
@@ -94,6 +95,7 @@ export interface Session {
   date: string; // ISO string
   sets: SetResult[];
   feedback?: string;
+  createdAt?: string; // ISO timestamp of when the log was recorded
 }
 
 export type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
@@ -112,6 +114,7 @@ export interface DrillAssignment {
 export interface PersonalGoal {
   id: string;
   playerId: string;
+  teamId: string;
   metric: GoalType;
   targetValue: number;
   startDate: string;

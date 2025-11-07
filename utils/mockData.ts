@@ -36,6 +36,7 @@ export const MOCK_TEAM: Team = {
   name: 'SCN Eagles',
   seasonYear: 2024,
   coachId: 'coach-1',
+  primaryColor: '#1d4ed8',
 };
 
 export const MOCK_DRILLS: Drill[] = [
@@ -152,6 +153,7 @@ export const MOCK_GOALS: PersonalGoal[] = [
     {
         id: 'goal-1',
         playerId: 'player-1',
+        teamId: 'team-1',
         metric: 'Execution %',
         targetValue: 80,
         startDate: new Date(Date.now() - 10 * 86400000).toISOString(),
@@ -162,6 +164,7 @@ export const MOCK_GOALS: PersonalGoal[] = [
     {
         id: 'goal-2',
         playerId: 'player-1',
+        teamId: 'team-1',
         metric: 'Hard Hit %',
         targetValue: 50,
         startDate: new Date().toISOString(),

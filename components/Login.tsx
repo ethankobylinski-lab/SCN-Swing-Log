@@ -1,73 +1,48 @@
-import React, { useState, useContext, useEffect } from 'react';
+import React, { useState, useContext } from 'react';
 import { DataContext } from '../contexts/DataContext';
-import { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
-import { auth } from '../firebaseConfig'; // Assuming auth is exported from firebaseConfig
 import { UserRole } from '../types';
 
-declare global {
-  interface Window {
-    recaptchaVerifier: RecaptchaVerifier;
-    confirmationResult: ConfirmationResult;
-  }
-}
-
 export const Login: React.FC = () => {
-  const [authMode, setAuthMode] = useState<'signUp' | 'signIn'>('signUp');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [step, setStep] = useState<'enterPhone' | 'enterCode'>('enterPhone');
+  const [authMode, setAuthMode] = useState<'signUp' | 'signIn'>('signIn');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const context = useContext(DataContext);
 
-  useEffect(() => {
-    // To prevent re-initializing on every render, we attach the verifier to the window object.
-    if (!window.recaptchaVerifier) {
-      // Use an explicit container for the reCAPTCHA verifier for more reliability
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        'size': 'invisible',
-        'callback': () => {
-          // reCAPTCHA solved, this callback is handled by the signInWithPhoneNumber call.
-        }
-      });
-    }
-  }, []);
-
-  const handleSendCode = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
-    if (!context) return;
+    if (!context) {
+      setError('Authentication is unavailable. Please refresh and try again.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const confirmationResult = await context.sendVerificationCode(phoneNumber, window.recaptchaVerifier);
-      window.confirmationResult = confirmationResult;
-      setStep('enterCode');
+      if (authMode === 'signUp') {
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match.');
+        }
+        await context.emailSignUp(email, password);
+      } else {
+        await context.emailSignIn(email, password);
+      }
     } catch (err) {
       console.error(err);
-      setError((err as Error).message || "An unexpected error occurred. Please try again.");
+      setError((err as Error).message || 'An unexpected error occurred. Please try again.');
     }
     setLoading(false);
   };
 
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    if (!context || !window.confirmationResult) return;
-    try {
-        await context.verifyCodeAndSignIn(window.confirmationResult, verificationCode);
-    } catch (err) {
-        setError((err as Error).message);
-    }
-    setLoading(false);
-  };
-  
   const toggleAuthMode = () => {
       setAuthMode(prev => prev === 'signUp' ? 'signIn' : 'signUp');
       setError('');
-      setStep('enterPhone');
-      setPhoneNumber('');
-      setVerificationCode('');
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
   }
 
   const handleDevLogin = (role: UserRole) => {
@@ -79,71 +54,88 @@ export const Login: React.FC = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md p-8 space-y-8 bg-card border border-border rounded-lg shadow-lg">
-        <div id="recaptcha-container"></div>
-        <div>
-          <h1 className="text-3xl font-bold text-center text-foreground">
-            {authMode === 'signUp' ? 'Create Your Account' : 'Welcome Back!'}
-          </h1>
-           <p className="text-center text-muted-foreground mt-2">
-            {authMode === 'signUp' ? 'Get started by entering your phone number.' : 'Sign in to continue.'}
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold text-foreground">
+              {authMode === 'signUp' ? 'Create Your Account' : 'Welcome Back!'}
+            </h1>
+            <button
+              type="button"
+              onClick={toggleAuthMode}
+              className="text-sm font-medium text-secondary hover:text-secondary/80 underline-offset-4 hover:underline"
+            >
+              {authMode === 'signUp' ? 'Back to Sign In' : 'Create Account'}
+            </button>
+          </div>
+          <p className="text-muted-foreground">
+            {authMode === 'signUp'
+              ? 'Enter your details below to get started.'
+              : 'Sign in with the email and password you used when creating your account.'}
           </p>
         </div>
 
-        {step === 'enterPhone' && (
-          <form className="mt-8 space-y-6" onSubmit={handleSendCode}>
-            {error && <p className="text-center text-destructive">{error}</p>}
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && <p className="text-center text-destructive">{error}</p>}
+          <div className="space-y-4">
             <div>
-              <label htmlFor="phone-number" className="sr-only">Phone Number</label>
+              <label htmlFor="email" className="sr-only">Email address</label>
               <input
-                id="phone-number"
-                name="phone"
-                type="tel"
-                autoComplete="tel"
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
                 required
                 className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
-                placeholder="Phone Number (e.g. +15551234567)"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
-              >
-                {loading ? 'Sending...' : 'Send Verification Code'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {step === 'enterCode' && (
-          <form className="mt-8 space-y-6" onSubmit={handleVerifyCode}>
-            <h2 className="text-xl font-semibold text-center text-foreground">Enter Verification Code</h2>
-            {error && <p className="text-center text-destructive">{error}</p>}
-             <p className="text-center text-sm text-muted-foreground">A code has been sent to {phoneNumber}</p>
-            <div>
-              <label htmlFor="verification-code" className="sr-only">Verification Code</label>
+              <label htmlFor="password" className="sr-only">Password</label>
               <input
-                id="verification-code"
-                name="code"
-                type="text"
+                id="password"
+                name="password"
+                type="password"
+                autoComplete={authMode === 'signUp' ? 'new-password' : 'current-password'}
                 required
-                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-secondary focus:border-secondary sm:text-sm"
-                placeholder="6-digit code"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <div>
-              <button type="submit" disabled={loading} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50">
-                 {loading ? 'Verifying...' : 'Verify & Continue'}
-              </button>
-            </div>
-            <button type="button" onClick={() => { setStep('enterPhone'); setError(''); }} className="text-xs text-center text-muted-foreground hover:underline w-full">Use a different phone number</button>
-          </form>
-        )}
+            {authMode === 'signUp' && (
+              <div>
+                <label htmlFor="confirm-password" className="sr-only">Confirm password</label>
+                <input
+                  id="confirm-password"
+                  name="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                  placeholder="Confirm password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
+          >
+            {loading
+              ? authMode === 'signUp'
+                ? 'Creating...'
+                : 'Signing in...'
+              : authMode === 'signUp'
+                ? 'Create account'
+                : 'Sign in'}
+          </button>
+        </form>
         
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
@@ -166,11 +158,6 @@ export const Login: React.FC = () => {
         </div>
 
 
-        <div className="text-center">
-            <button onClick={toggleAuthMode} className="text-sm text-muted-foreground hover:text-secondary underline">
-                {authMode === 'signUp' ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-            </button>
-        </div>
       </div>
     </div>
   );
