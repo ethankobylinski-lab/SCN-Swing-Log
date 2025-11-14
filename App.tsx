@@ -1,11 +1,19 @@
-import React, { useContext } from 'react';
+import React, { useContext, Suspense, lazy } from 'react';
 import { DataContext } from './contexts/DataContext';
 import { Login } from './components/Login';
-import { CoachView } from './components/CoachView';
-import { PlayerView } from './components/PlayerView';
 import { Spinner } from './components/Spinner';
 import { Onboarding } from './components/Onboarding';
 import { UserRole } from './types';
+
+const CoachView = lazy(async () => {
+  const module = await import('./components/CoachView');
+  return { default: module.CoachView };
+});
+
+const PlayerView = lazy(async () => {
+  const module = await import('./components/PlayerView');
+  return { default: module.PlayerView };
+});
 
 export const App: React.FC = () => {
   const context = useContext(DataContext);
@@ -57,7 +65,15 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {renderView()}
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center">
+            <Spinner />
+          </div>
+        }
+      >
+        {renderView()}
+      </Suspense>
     </div>
   );
 };

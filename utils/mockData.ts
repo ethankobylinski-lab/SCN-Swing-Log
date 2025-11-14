@@ -5,6 +5,7 @@ export const MOCK_COACH: Coach = {
   name: 'Coach Miller',
   role: UserRole.Coach,
   teamIds: ['team-1'],
+  coachTeamIds: ['team-1'],
 };
 
 export const MOCK_PLAYERS: Player[] = [
@@ -120,6 +121,11 @@ const generateSessions = (): Session[] => {
                 };
             });
 
+            const createdAt = date.toISOString();
+            const maybeEdited = Math.random() > 0.6;
+            const updatedAt = maybeEdited ? new Date(date.getTime() + 3600000).toISOString() : createdAt;
+            const reflection = Math.random() > 0.7 ? 'Focused on staying through the middle of the field today.' : undefined;
+
             sessions.push({
                 id: `session-${player.id}-${i}`,
                 playerId: player.id,
@@ -128,6 +134,10 @@ const generateSessions = (): Session[] => {
                 teamId: 'team-1',
                 date: date.toISOString(),
                 sets: sets,
+                reflection,
+                createdAt,
+                updatedAt,
+                lastEditedBy: maybeEdited ? player.id : undefined,
             });
         }
     });
@@ -160,6 +170,9 @@ export const MOCK_GOALS: PersonalGoal[] = [
         targetDate: new Date(Date.now() + 20 * 86400000).toISOString(),
         status: 'Active',
         drillType: 'Live BP',
+        pitchTypes: ['Fastball'],
+        reflection: 'Staying loose early in the round helps me catch the fastball out front.',
+        minReps: 50,
     },
     {
         id: 'goal-2',
@@ -171,6 +184,7 @@ export const MOCK_GOALS: PersonalGoal[] = [
         targetDate: new Date(Date.now() + 30 * 86400000).toISOString(),
         status: 'Active',
         targetZones: ['Inside High', 'Inside Middle'],
+        pitchTypes: ['Slider', 'Curveball'],
     }
 ];
 

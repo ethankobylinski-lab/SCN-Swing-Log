@@ -1,0 +1,355 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function currentUserDoc() {
+      return signedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)) : null;
+    }
+
+    function currentCoachTeamIds() {
+      let doc = currentUserDoc();
+      return doc != null && doc.exists()
+        ? (
+            doc.data.coachTeamIds is list && doc.data.coachTeamIds.size() > 0
+              ? doc.data.coachTeamIds
+              : (
+                  isCoach()
+                    ? (
+                        doc.data.teamIds is list && doc.data.teamIds.size() > 0
+                          ? doc.data.teamIds
+                          : (doc.data.teams is list ? doc.data.teams : [])
+                      )
+                    : []
+                )
+          )
+        : [];
+    }
+
+    function currentPlayerTeamIds() {
+      let doc = currentUserDoc();
+      return doc != null && doc.exists()
+        ? (
+            doc.data.teamIds is list && doc.data.teamIds.size() > 0
+              ? doc.data.teamIds
+              : (doc.data.teams is list ? doc.data.teams : [])
+          )
+        : [];
+    }
+
+    function roleEquals(roleValue, expected) {
+      return roleValue is string && lower(roleValue) == lower(expected);
+    }
+
+    function normalizeTeamList(value) {
+      return value is list ? value : [];
+    }
+
+    function coachCanReadCoachDoc(targetDoc) {
+      let coachTeams = normalizeTeamList(
+        targetDoc != null &&
+        targetDoc.exists() &&
+        targetDoc.data.coachTeamIds is list &&
+        targetDoc.data.coachTeamIds.size() > 0
+          ? targetDoc.data.coachTeamIds
+          : targetDoc != null && targetDoc.exists()
+              ? targetDoc.data.teamIds
+              : []
+      );
+
+      return isCoach() &&
+        targetDoc != null &&
+        targetDoc.exists() &&
+        roleEquals(targetDoc.data.role, 'Coach') &&
+        coachTeams.size() > 0 &&
+        (
+          coachTeams.hasAny(currentCoachTeamIds()) ||
+          coachTeams.hasAny(currentPlayerTeamIds())
+        );
+    }
+
+    function isCoach() {
+      let doc = currentUserDoc();
+      return doc != null && doc.exists() && roleEquals(doc.data.role, 'Coach');
+    }
+
+    function hasMembership(teamId) {
+      return teamId != null &&
+        (currentPlayerTeamIds().hasAny([teamId]) || currentCoachTeamIds().hasAny([teamId]));
+    }
+
+    function getTeamDoc(teamId) {
+      return get(/databases/$(database)/documents/teams/$(teamId));
+    }
+
+    function isHeadCoachOfTeam(teamId) {
+      let teamDoc = getTeamDoc(teamId);
+      return teamDoc != null && teamDoc.exists() && teamDoc.data.coachId == request.auth.uid;
+    }
+
+    function canCoachManageTeam(teamId) {
+      return teamId != null && (
+        currentCoachTeamIds().hasAny([teamId]) ||
+        (isCoach() && currentPlayerTeamIds().hasAny([teamId])) ||
+        isHeadCoachOfTeam(teamId)
+      );
+    }
+
+    function hasField(fieldName) {
+      return request.resource.data.keys().hasAny([fieldName]);
+    }
+
+    function preferencesAreMap() {
+      return !hasField('preferences') || request.resource.data.preferences is map;
+    }
+
+    function roleImmutable() {
+      return !hasField('role') || (resource.exists() && roleEquals(request.resource.data.role, resource.data.role));
+    }
+
+    function isNumber(value) {
+      return value is int || value is float;
+    }
+
+    function stringField(fieldName) {
+      return hasField(fieldName) && request.resource.data[fieldName] is string && request.resource.data[fieldName].size() > 0;
+    }
+
+    function optionalStringField(fieldName) {
+      return !hasField(fieldName) || request.resource.data[fieldName] is string;
+    }
+
+    function boolField(fieldName) {
+      return hasField(fieldName) && request.resource.data[fieldName] is bool;
+    }
+
+    function optionalBoolField(fieldName) {
+      return !hasField(fieldName) || request.resource.data[fieldName] is bool;
+    }
+
+    function listField(fieldName) {
+      return hasField(fieldName) && request.resource.data[fieldName] is list;
+    }
+
+    function optionalListField(fieldName) {
+      return !hasField(fieldName) || request.resource.data[fieldName] is list;
+    }
+
+    function requiredStringList(fieldName) {
+      return hasField(fieldName) && request.resource.data[fieldName] is list && request.resource.data[fieldName].all(item, item is string);
+    }
+
+    function stringListField(fieldName) {
+      return !hasField(fieldName) || (request.resource.data[fieldName] is list && request.resource.data[fieldName].all(item, item is string));
+    }
+
+    function numberField(fieldName) {
+      return hasField(fieldName) && isNumber(request.resource.data[fieldName]);
+    }
+
+    function optionalNumberField(fieldName) {
+      return !hasField(fieldName) || isNumber(request.resource.data[fieldName]);
+    }
+
+    function fieldUnchanged(fieldName) {
+      return (resource == null && !hasField(fieldName)) ||
+        (resource != null && (
+          (!resource.data.keys().hasAny([fieldName]) && !hasField(fieldName)) ||
+          (resource.data.keys().hasAny([fieldName]) && hasField(fieldName) && request.resource.data[fieldName] == resource.data[fieldName])
+        ));
+    }
+
+    function membershipListsAreValid() {
+      return stringListField('teamIds') && stringListField('coachTeamIds');
+    }
+
+    function membershipRoleGuards() {
+      return (!roleEquals(resource.data.role, 'Player') || fieldUnchanged('coachTeamIds')) &&
+        (!roleEquals(resource.data.role, 'Coach') || fieldUnchanged('teamIds'));
+    }
+
+    function canUpdateUserDoc() {
+      return roleImmutable()
+          && preferencesAreMap()
+          && membershipListsAreValid()
+          && membershipRoleGuards();
+    }
+
+    function validTeamWrite() {
+      return stringField('name') &&
+        numberField('seasonYear') &&
+        stringField('coachId') &&
+        optionalStringField('logoUrl') &&
+        optionalStringField('primaryColor') &&
+        optionalStringField('joinCodePlayer') &&
+        optionalStringField('joinCodeCoach');
+    }
+
+    function validSessionWrite() {
+      return stringField('name') &&
+        stringField('playerId') &&
+        stringField('teamId') &&
+        stringField('date') &&
+        listField('sets') &&
+        optionalStringField('drillId') &&
+        optionalStringField('feedback') &&
+        optionalStringField('reflection') &&
+        optionalStringField('createdAt') &&
+        optionalStringField('updatedAt') &&
+        optionalStringField('lastEditedBy') &&
+        optionalStringField('loggedBy');
+    }
+
+    function validPersonalGoalWrite() {
+      return stringField('playerId') &&
+        stringField('teamId') &&
+        stringField('metric') &&
+        stringField('status') &&
+        stringField('startDate') &&
+        stringField('targetDate') &&
+        numberField('targetValue') &&
+        optionalStringField('drillType') &&
+        stringListField('targetZones') &&
+        stringListField('pitchTypes') &&
+        optionalNumberField('minReps') &&
+        optionalStringField('reflection');
+    }
+
+    function validTeamGoalWrite() {
+      return stringField('teamId') &&
+        stringField('description') &&
+        stringField('metric') &&
+        stringField('status') &&
+        stringField('startDate') &&
+        stringField('targetDate') &&
+        numberField('targetValue') &&
+        optionalStringField('drillType') &&
+        stringListField('targetZones') &&
+        stringListField('pitchTypes');
+    }
+
+    function validDrillWrite() {
+      return stringField('teamId') &&
+        stringField('name') &&
+        stringField('description') &&
+        stringField('goalType') &&
+        numberField('goalTargetValue') &&
+        numberField('repsPerSet') &&
+        numberField('sets') &&
+        numberField('outs') &&
+        stringField('countSituation') &&
+        requiredStringList('targetZones') &&
+        requiredStringList('pitchTypes') &&
+        requiredStringList('baseRunners') &&
+        optionalStringField('drillType') &&
+        stringField('coachId');
+    }
+
+    function validAssignmentWrite() {
+      return stringField('teamId') &&
+        stringField('drillId') &&
+        requiredStringList('playerIds') &&
+        boolField('isRecurring') &&
+        stringField('assignedDate') &&
+        optionalStringList('recurringDays') &&
+        optionalStringField('dueDate') &&
+        optionalStringField('coachId');
+    }
+
+    function validJoinCodeWrite() {
+      return stringField('teamId') &&
+        stringField('role') &&
+        optionalStringField('updatedAt');
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (
+        request.auth.uid == userId ||
+        (isCoach() && roleEquals(resource.data.role, 'Player') && resource.data.teamIds is list && resource.data.teamIds.hasAny(currentCoachTeamIds())) ||
+        coachCanReadCoachDoc(resource)
+      );
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update: if signedIn() && request.auth.uid == userId && canUpdateUserDoc();
+    }
+
+    match /teams/{teamId} {
+      allow read: if signedIn() && (hasMembership(teamId) || resource.data.coachId == request.auth.uid);
+      allow create: if signedIn() && validTeamWrite() && request.resource.data.coachId == request.auth.uid;
+      allow update: if signedIn() && validTeamWrite() && canCoachManageTeam(teamId);
+      allow delete: if signedIn() && canCoachManageTeam(teamId);
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.playerId ||
+        (isCoach() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId)) ||
+        (resource.data.teamId is string && hasMembership(resource.data.teamId))
+      );
+
+      allow create: if signedIn() &&
+        validSessionWrite() &&
+        request.resource.data.playerId == request.auth.uid &&
+        request.resource.data.teamId is string &&
+        hasMembership(request.resource.data.teamId);
+
+      allow update: if signedIn() && validSessionWrite() && request.auth.uid == resource.data.playerId;
+      allow delete: if signedIn() && request.auth.uid == resource.data.playerId;
+    }
+
+    match /personalGoals/{goalId} {
+      allow read: if signedIn() && (
+        request.auth.uid == resource.data.playerId ||
+        (isCoach() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId))
+      );
+
+      allow create: if signedIn() &&
+        validPersonalGoalWrite() &&
+        (
+          request.resource.data.playerId == request.auth.uid ||
+          (isCoach() && request.resource.data.teamId is string && canCoachManageTeam(request.resource.data.teamId))
+        );
+
+      allow update: if signedIn() &&
+        validPersonalGoalWrite() &&
+        (
+          request.auth.uid == resource.data.playerId ||
+          (isCoach() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId))
+        );
+
+      allow delete: if signedIn() && (
+        request.auth.uid == resource.data.playerId ||
+        (isCoach() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId))
+      );
+    }
+
+    match /teamGoals/{goalId} {
+      allow read: if signedIn() && resource.data.teamId is string && (canCoachManageTeam(resource.data.teamId) || hasMembership(resource.data.teamId));
+      allow create: if signedIn() && validTeamGoalWrite() && request.resource.data.teamId is string && canCoachManageTeam(request.resource.data.teamId);
+      allow update: if signedIn() && validTeamGoalWrite() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+      allow delete: if signedIn() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+    }
+
+    match /drills/{drillId} {
+      allow read: if signedIn() && resource.data.teamId is string && (canCoachManageTeam(resource.data.teamId) || hasMembership(resource.data.teamId));
+      allow create: if signedIn() && validDrillWrite() && request.resource.data.teamId is string && canCoachManageTeam(request.resource.data.teamId);
+      allow update: if signedIn() && validDrillWrite() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+      allow delete: if signedIn() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if signedIn() && resource.data.teamId is string && (canCoachManageTeam(resource.data.teamId) || hasMembership(resource.data.teamId));
+      allow create: if signedIn() && validAssignmentWrite() && request.resource.data.teamId is string && canCoachManageTeam(request.resource.data.teamId);
+      allow update: if signedIn() && validAssignmentWrite() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+      allow delete: if signedIn() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+    }
+
+    match /joinCodes/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn() && validJoinCodeWrite() && request.resource.data.teamId is string && canCoachManageTeam(request.resource.data.teamId);
+      allow update: if signedIn() && validJoinCodeWrite() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+      allow delete: if signedIn() && resource.data.teamId is string && canCoachManageTeam(resource.data.teamId);
+    }
+  }
+}

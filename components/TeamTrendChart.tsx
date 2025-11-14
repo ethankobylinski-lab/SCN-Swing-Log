@@ -8,6 +8,9 @@ interface TrendData {
 
 interface TeamTrendChartProps {
   data: TrendData[];
+  title?: string;
+  subtitle?: string;
+  headerRight?: React.ReactNode;
 }
 
 const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
@@ -24,10 +27,16 @@ const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
     return null;
 };
 
-export const TeamTrendChart: React.FC<TeamTrendChartProps> = ({ data }) => {
+export const TeamTrendChart: React.FC<TeamTrendChartProps> = ({ data, title = 'Team Execution %', subtitle, headerRight }) => {
   return (
     <div className="bg-card border border-border p-4 rounded-lg shadow-sm h-96">
-        <h3 className="text-lg font-bold text-primary mb-4">Team Execution % (Last 7 Days)</h3>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <div>
+                <h3 className="text-lg font-bold text-primary">{title}</h3>
+                {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+            </div>
+            {headerRight}
+        </div>
         <ResponsiveContainer width="100%" height="90%">
             <LineChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                 <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" />

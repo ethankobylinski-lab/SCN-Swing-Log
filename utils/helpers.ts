@@ -63,70 +63,82 @@ const getDrillTypeForSession = (session: Session, drills: Drill[]): DrillType | 
     return undefined;
 };
 
+export const resolveDrillTypeForSet = (session: Session, set: SetResult, drills: Drill[]): DrillType | undefined => {
+    return set.drillType || getDrillTypeForSession(session, drills);
+};
+
 
 export const getCurrentMetricValue = (goal: PersonalGoal, sessions: Session[], drills: Drill[]): number => {
-    const filteredSessions = goal.drillType
-        ? sessions.filter(s => getDrillTypeForSession(s, drills) === goal.drillType)
-        : sessions;
+    let setsWithSession = sessions.flatMap(session => session.sets.map(set => ({ session, set })));
 
-    let allSets = filteredSessions.flatMap(s => s.sets);
+    if (goal.drillType) {
+        setsWithSession = setsWithSession.filter(({ session, set }) => resolveDrillTypeForSet(session, set, drills) === goal.drillType);
+    }
+
+    let filteredSets = setsWithSession.map(({ set }) => set);
 
     if (goal.targetZones && goal.targetZones.length > 0) {
-        allSets = allSets.filter(set =>
+        filteredSets = filteredSets.filter(set =>
             set.targetZones?.some(zone => goal.targetZones!.includes(zone))
         );
     }
 
-    if (allSets.length === 0) return 0;
+    if (goal.pitchTypes && goal.pitchTypes.length > 0) {
+        filteredSets = filteredSets.filter(set =>
+            set.pitchTypes?.some(pitch => goal.pitchTypes!.includes(pitch))
+        );
+    }
+
+    if (filteredSets.length === 0) return 0;
 
     switch (goal.metric) {
         case 'Execution %':
-            return calculateExecutionPercentage(allSets);
+            return calculateExecutionPercentage(filteredSets);
         case 'Hard Hit %':
-            return calculateHardHitPercentage(allSets);
+            return calculateHardHitPercentage(filteredSets);
         case 'No Strikeouts':
-            return allSets.reduce((sum, set) => sum + set.strikeouts, 0);
+            return filteredSets.reduce((sum, set) => sum + set.strikeouts, 0);
         case 'Total Reps':
-            return allSets.reduce((sum, set) => sum + set.repsAttempted, 0);
+            return filteredSets.reduce((sum, set) => sum + set.repsAttempted, 0);
         default:
             return 0;
     }
 };
 
 export const getCurrentTeamMetricValue = (goal: TeamGoal, sessions: Session[], drills: Drill[]): number => {
-    let filteredSessions = sessions;
+    let setsWithSession = sessions.flatMap(session => session.sets.map(set => ({ session, set })));
 
     if (goal.drillType) {
-        filteredSessions = filteredSessions.filter(s => getDrillTypeForSession(s, drills) === goal.drillType);
+        setsWithSession = setsWithSession.filter(({ session, set }) => resolveDrillTypeForSet(session, set, drills) === goal.drillType);
     }
 
-    let allSets = filteredSessions.flatMap(s => s.sets);
+    let filteredSets = setsWithSession.map(({ set }) => set);
     
     if (goal.targetZones && goal.targetZones.length > 0) {
-        allSets = allSets.filter(set =>
+        filteredSets = filteredSets.filter(set =>
             set.targetZones?.some(zone => goal.targetZones!.includes(zone))
         );
     }
 
     if (goal.pitchTypes && goal.pitchTypes.length > 0) {
-        allSets = allSets.filter(set =>
+        filteredSets = filteredSets.filter(set =>
             set.pitchTypes?.some(pitch => goal.pitchTypes!.includes(pitch))
         );
     }
     
-    if (allSets.length === 0) return 0;
+    if (filteredSets.length === 0) return 0;
 
     switch (goal.metric) {
         case 'Execution %':
-            return calculateExecutionPercentage(allSets);
+            return calculateExecutionPercentage(filteredSets);
         case 'Hard Hit %':
-            return calculateHardHitPercentage(allSets);
+            return calculateHardHitPercentage(filteredSets);
         case 'No Strikeouts':
             // For a team goal, this would likely be an average, but for now we sum it.
             // A better team goal would be "Avg Strikeouts per Session"
-            return allSets.reduce((sum, set) => sum + set.strikeouts, 0);
+            return filteredSets.reduce((sum, set) => sum + set.strikeouts, 0);
         case 'Total Reps':
-            return allSets.reduce((sum, set) => sum + set.repsAttempted, 0);
+            return filteredSets.reduce((sum, set) => sum + set.repsAttempted, 0);
         default:
             return 0;
     }
@@ -137,6 +149,9 @@ export const formatGoalName = (goal: PersonalGoal): string => {
     const specifics = [];
     if (goal.drillType) {
         specifics.push(goal.drillType);
+    }
+    if (goal.pitchTypes && goal.pitchTypes.length > 0) {
+        specifics.push(goal.pitchTypes.length > 2 ? `${goal.pitchTypes.length} pitch types` : goal.pitchTypes.join('/'));
     }
     if (goal.targetZones && goal.targetZones.length > 0) {
         if (goal.targetZones.length > 2) {
@@ -167,9 +182,29 @@ export const formatTeamGoalName = (goal: TeamGoal): string => {
         }
     }
     if (specifics.length > 0) {
-        return `${goal.metric} (${specifics.join(' & ')})`;
+    return `${goal.metric} (${specifics.join(' & ')})`;
+  }
+  return goal.metric;
+};
+
+export const describeRelativeDay = (isoDate?: string): string | null => {
+    if (!isoDate) return null;
+    const target = new Date(isoDate);
+    if (isNaN(target.getTime())) return null;
+    const now = new Date();
+    const diffMs = now.getTime() - target.getTime();
+    const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+    if (diffMinutes < 60) {
+        return diffMinutes <= 1 ? 'just now' : `${diffMinutes} min ago`;
     }
-    return goal.metric;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) {
+        return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
+    }
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return target.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
 export const addTrendLineData = (data: { [key: string]: any }[], dataKey: string): { [key: string]: any }[] => {

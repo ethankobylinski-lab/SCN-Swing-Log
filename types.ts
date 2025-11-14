@@ -10,8 +10,16 @@ export interface User {
   phoneNumber?: string | null;
   name: string;
   role: UserRole;
-  teamIds: string[];
+  teamIds: string[]; // Teams the user is currently a member of (players)
+  coachTeamIds?: string[]; // Teams the user coaches (coaches only)
   isNew?: boolean; // Flag for new users needing onboarding
+  preferences?: UserPreferences;
+}
+
+export interface UserPreferences {
+  defaultTeamId?: string;
+  showAdvancedAnalytics?: boolean;
+  darkMode?: boolean;
 }
 
 export interface Team {
@@ -21,6 +29,8 @@ export interface Team {
   seasonYear: number;
   coachId: string;
   primaryColor?: string;
+  joinCodePlayer?: string;
+  joinCodeCoach?: string;
 }
 
 // Added JoinCode interface to manage team invitations
@@ -43,6 +53,7 @@ export interface Player extends User {
 
 export interface Coach extends User {
   role: UserRole.Coach;
+  coachTeamIds: string[];
 }
 
 export type TargetZone = 'Inside High' | 'Inside Middle' | 'Inside Low' | 'Middle High' | 'Middle Middle' | 'Middle Low' | 'Outside High' | 'Outside Middle' | 'Outside Low';
@@ -75,6 +86,8 @@ export interface SetResult {
   repsExecuted: number;
   hardHits: number;
   strikeouts: number;
+  drillLabel?: string; // Free-text focus for this set (e.g., "Low Tee")
+  drillType?: DrillType; // Structured drill category for analytics
   notes?: string;
   // New fields for game situation context
   outs?: 0 | 1 | 2;
@@ -95,7 +108,10 @@ export interface Session {
   date: string; // ISO string
   sets: SetResult[];
   feedback?: string;
+  reflection?: string;
   createdAt?: string; // ISO timestamp of when the log was recorded
+  updatedAt?: string; // ISO timestamp of the most recent edit
+  lastEditedBy?: string;
 }
 
 export type DayOfWeek = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
@@ -122,6 +138,9 @@ export interface PersonalGoal {
   status: 'Active' | 'Completed' | 'Archived';
   drillType?: DrillType;
   targetZones?: TargetZone[];
+  pitchTypes?: PitchType[];
+  reflection?: string;
+  minReps?: number;
 }
 
 export interface TeamGoal {

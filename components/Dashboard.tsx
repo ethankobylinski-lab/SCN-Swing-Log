@@ -37,7 +37,7 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ navItems, currentView, setCurre
 interface TeamSwitcherProps {
   teams: Team[];
   activeTeamId: string;
-  setActiveTeamId: (teamId: string) => void;
+  setActiveTeamId: (teamId: string | undefined) => void;
 }
 
 const TeamSwitcher: React.FC<TeamSwitcherProps> = ({ teams, activeTeamId, setActiveTeamId }) => {
@@ -71,7 +71,7 @@ interface DashboardProps {
   headerContent?: React.ReactNode;
   teams?: Team[];
   activeTeamId?: string;
-  setActiveTeamId?: (teamId: string) => void;
+  setActiveTeamId?: (teamId: string | undefined) => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({

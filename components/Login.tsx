@@ -1,4 +1,5 @@
 import React, { useState, useContext } from 'react';
+import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
 import { DataContext } from '../contexts/DataContext';
 import { UserRole } from '../types';
 
@@ -9,6 +10,8 @@ export const Login: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetStatus, setResetStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [resettingPassword, setResettingPassword] = useState(false);
   const context = useContext(DataContext);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,6 +38,39 @@ export const Login: React.FC = () => {
       setError((err as Error).message || 'An unexpected error occurred. Please try again.');
     }
     setLoading(false);
+  };
+
+  const handlePasswordReset = async () => {
+    setResetStatus(null);
+    if (!email) {
+      setResetStatus({ type: 'error', message: 'Enter your email above before requesting a reset.' });
+      return;
+    }
+
+    try {
+      setResettingPassword(true);
+      const auth = getAuth();
+      await sendPasswordResetEmail(auth, email);
+      setResetStatus({
+        type: 'success',
+        message: 'Password reset email sent. Check your inbox (and spam folder).',
+      });
+    } catch (err) {
+      const errorCode = (err as { code?: string }).code;
+      if (errorCode === 'auth/user-not-found') {
+        setResetStatus({ type: 'error', message: 'No account exists for that email.' });
+      } else if (errorCode === 'auth/invalid-email') {
+        setResetStatus({ type: 'error', message: 'Please enter a valid email address.' });
+      } else {
+        console.error('Password reset failed', err);
+        setResetStatus({
+          type: 'error',
+          message: 'Unable to send reset email right now. Please try again later.',
+        });
+      }
+    } finally {
+      setResettingPassword(false);
+    }
   };
 
   const toggleAuthMode = () => {
@@ -136,6 +172,26 @@ export const Login: React.FC = () => {
                 : 'Sign in'}
           </button>
         </form>
+
+        <div className="space-y-2">
+          {resetStatus && (
+            <p
+              className={`text-sm ${
+                resetStatus.type === 'success' ? 'text-success' : 'text-destructive'
+              }`}
+            >
+              {resetStatus.message}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handlePasswordReset}
+            disabled={resettingPassword}
+            className="w-full flex justify-center py-2 px-4 border border-border text-sm font-medium rounded-md text-primary bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
+          >
+            {resettingPassword ? 'Sending Reset Email...' : 'Reset Password'}
+          </button>
+        </div>
         
         <div className="relative">
           <div className="absolute inset-0 flex items-center">

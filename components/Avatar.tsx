@@ -15,7 +15,11 @@ export const Avatar: React.FC<AvatarProps> = ({ name, className = '' }) => {
   };
 
   return (
-    <div className={`flex items-center justify-center rounded-full bg-primary text-white font-bold ${className}`}>
+    <div
+      className={`flex items-center justify-center rounded-full bg-primary text-white font-bold ${className}`}
+      role="img"
+      aria-label={`Avatar for ${name || 'user'}`}
+    >
       {getInitials(name)}
     </div>
   );
