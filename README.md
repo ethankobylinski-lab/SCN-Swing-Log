@@ -8,24 +8,26 @@ This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/drive/1kSDVmSMccQC0sH5OedC3iKzjEviLfvLi
 
+## Supabase Setup
+
+1. [Create a new Supabase project](https://supabase.com/dashboard/projects) and grab the **Project URL** and **anon** API key.
+2. Open the SQL editor in the Supabase dashboard and run [`supabase/schema.sql`](supabase/schema.sql).  
+   This creates all tables, helper functions, row-level security policies, and the `resolve_join_code` RPC used by the client.
+3. In the project settings → Authentication → URL Configuration, set the **Password Reset Redirect URL** to your local dev origin (e.g. `http://localhost:5173/auth/callback`) so Supabase can send password reset links.
+4. Create `.env.local` at the repo root with:
+
+   ```bash
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your-anon-key
+   ```
+
+   (Keep any existing keys, such as `GEMINI_API_KEY`, alongside the Supabase values.)
+
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js 18+
 
+1. Install dependencies: `npm install`
+2. Start the app: `npm run dev`
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
-
-## Testing & QA
-
-Before touching production data, run everything against the Firebase emulators so you can iterate on Firestore rules and Cloud Functions safely.
-
-1. Install Firebase CLI tooling (one time): `npm install -g firebase-tools`.
-2. Install root dependencies (already covered above) **and** the Cloud Functions deps: `cd functions && npm install`.
-3. Start the emulators from the project root: `npx firebase emulators:start --only firestore,functions`.
-4. In a second terminal, run the web app using emulator config: `VITE_USE_EMULATORS=true npm run dev`.
-
-While the emulators are running, every auth’d action in the UI will talk to the local Firestore/Functions stack, letting you verify writes, reads, and newly-tuned security rules without touching production. When you’re ready for a deeper QA pass, use the detailed checklist in [`docs/testing-plan.md`](docs/testing-plan.md).
+The UI now talks directly to Supabase (Auth + Postgres) rather than Firebase.

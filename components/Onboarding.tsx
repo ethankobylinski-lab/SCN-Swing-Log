@@ -21,6 +21,7 @@ export const Onboarding: React.FC = () => {
   const [copiedCodeType, setCopiedCodeType] = useState<'player' | 'coach' | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   const context = useContext(DataContext);
   const colorOptions = ['#1d4ed8', '#2563eb', '#16a34a', '#dc2626', '#f97316', '#7c3aed', '#0f172a'];
 
@@ -63,6 +64,7 @@ export const Onboarding: React.FC = () => {
         setError("Please fill out all required fields.");
         return;
     }
+    setLoadingLabel('Saving...');
     setLoading(true);
     try {
         await context.createUserProfile({
@@ -75,8 +77,10 @@ export const Onboarding: React.FC = () => {
         }
     } catch (err) {
         setError((err as Error).message);
+    } finally {
+        setLoading(false);
+        setLoadingLabel(null);
     }
-    setLoading(false);
   };
 
   const handleProfileChange = (field: keyof PlayerProfile, value: string | number) => {
@@ -99,6 +103,7 @@ export const Onboarding: React.FC = () => {
         setError("Please complete all team fields.");
         return;
     }
+    setLoadingLabel('Creating team...');
     setLoading(true);
     try {
         const teamResult = await context.createTeam({
@@ -116,8 +121,10 @@ export const Onboarding: React.FC = () => {
         setStep('code');
     } catch (err) {
         setError((err as Error).message || "Unable to create your team. Please try again.");
+    } finally {
+        setLoading(false);
+        setLoadingLabel(null);
     }
-    setLoading(false);
   };
 
   const handleJoinTeamSubmit = async (e: React.FormEvent) => {
@@ -131,6 +138,7 @@ export const Onboarding: React.FC = () => {
         setError("Enter the invite code the other coach shared.");
         return;
     }
+    setLoadingLabel('Joining team...');
     setLoading(true);
     try {
         await context.joinTeamAsCoach(joinCode.trim().toUpperCase());
@@ -139,28 +147,48 @@ export const Onboarding: React.FC = () => {
     } catch (err) {
         const message = (err as Error).message || "Unable to join this team. Double-check the code and try again.";
         setError(message);
+    } finally {
+        setLoading(false);
+        setLoadingLabel(null);
     }
-    setLoading(false);
   };
 
   const handleExitOnboarding = () => {
-    if (!context?.logout) {
-        return;
-    }
+      if (!context?.logout) {
+          return;
+      }
+      setError('');
+      context.logout();
+  };
+
+  const handleSkipTeamCreation = async () => {
+    if (!context) return;
     setError('');
-    context.logout();
+    setLoadingLabel('Continuing...');
+    setLoading(true);
+    try {
+        await context.completeOnboarding();
+    } catch (err) {
+        setError((err as Error).message || 'Unable to continue without creating a team.');
+    } finally {
+        setLoading(false);
+        setLoadingLabel(null);
+    }
   };
 
   const handleFinish = async () => {
     if (!context) return;
     setError('');
+    setLoadingLabel('Finishing...');
     setLoading(true);
     try {
         await context.completeOnboarding();
     } catch (err) {
         setError((err as Error).message);
+    } finally {
+        setLoading(false);
+        setLoadingLabel(null);
     }
-    setLoading(false);
   };
 
   const renderProfileStep = () => (
@@ -218,7 +246,7 @@ export const Onboarding: React.FC = () => {
 
       <div>
         <button type="submit" disabled={loading} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50">
-          {loading ? 'Saving...' : role === UserRole.Coach ? 'Save & Create Team' : 'Complete Profile'}
+          {loading ? loadingLabel ?? 'Saving...' : role === UserRole.Coach ? 'Save & Create Team' : 'Complete Profile'}
         </button>
       </div>
     </form>
@@ -310,7 +338,15 @@ export const Onboarding: React.FC = () => {
             disabled={loading}
             className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
           >
-            {loading ? 'Creating team...' : 'Create Team'}
+            {loading ? loadingLabel ?? 'Creating team...' : 'Create Team'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSkipTeamCreation}
+            disabled={loading}
+            className="w-full text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          >
+            Continue without creating a team
           </button>
         </form>
       ) : (
@@ -335,7 +371,7 @@ export const Onboarding: React.FC = () => {
             disabled={loading}
             className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
           >
-            {loading ? 'Joining team...' : 'Join Team as Coach'}
+            {loading ? loadingLabel ?? 'Joining team...' : 'Join Team as Coach'}
           </button>
         </form>
       )}
@@ -387,7 +423,7 @@ export const Onboarding: React.FC = () => {
         onClick={handleFinish}
         className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
       >
-        {loading ? 'Finishing...' : 'Go to Dashboard'}
+        {loading ? loadingLabel ?? 'Finishing...' : 'Go to Dashboard'}
       </button>
     </div>
   );

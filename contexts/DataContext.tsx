@@ -1868,52 +1868,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             throw new Error("Only coaches can create teams.");
         }
 
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-        const timestamp = new Date().toISOString();
-        const payload = {
-            name: teamData.name,
-            season_year: teamData.seasonYear,
-            coach_id: user.id,
-            created_at: timestamp,
-        };
-<<<<<<< ours
-<<<<<<< ours
-=======
         const { data, error } = await supabase.rpc<SupabaseTeamRow>('create_team', {
             team_name: teamData.name,
             team_season_year: teamData.seasonYear,
+            team_primary_color: teamData.primaryColor ?? null,
         });
->>>>>>> theirs
-=======
->>>>>>> theirs
 
-        const { data, error } = await supabase
-            .from<SupabaseTeamRow>('teams')
-            .insert(payload)
-            .select('*')
-            .single();
-
-<<<<<<< ours
-=======
-
-        const { data, error } = await supabase
-            .from<SupabaseTeamRow>('teams')
-            .insert(payload)
-            .select('*')
-            .single();
-
->>>>>>> theirs
-=======
->>>>>>> theirs
-        if (error) {
+        if (error || !data) {
             console.error('Error creating team: ', error);
-            throw new Error(error.message);
+            throw new Error(error?.message ?? 'Unable to create team.');
         }
 
         const newTeam = { ...mapTeamRow(data), joinCodePlayer: playerJoinCode, joinCodeCoach: coachJoinCode };

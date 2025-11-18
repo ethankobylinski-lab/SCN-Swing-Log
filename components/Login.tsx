@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
+import { supabase } from '../supabaseClient';
 import { DataContext } from '../contexts/DataContext';
 import { UserRole } from '../types';
 
@@ -49,8 +49,12 @@ export const Login: React.FC = () => {
 
     try {
       setResettingPassword(true);
-      const auth = getAuth();
-      await sendPasswordResetEmail(auth, email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      });
+      if (error) {
+        throw error;
+      }
       setResetStatus({
         type: 'success',
         message: 'Password reset email sent. Check your inbox (and spam folder).',

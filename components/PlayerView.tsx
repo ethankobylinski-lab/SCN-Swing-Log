@@ -1,5 +1,5 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
-import { DataContext } from '../contexts/DataContext';
+import { DataContext, PitchingStatsSummary } from '../contexts/DataContext';
 import { Dashboard } from './Dashboard';
 import { ProfileTab } from './ProfileTab';
 import { HomeIcon } from './icons/HomeIcon';
@@ -9,7 +9,7 @@ import { PencilIcon } from './icons/PencilIcon';
 import { NoteIcon } from './icons/NoteIcon';
 import { ProfileIcon } from './icons/ProfileIcon';
 import { InfoIcon } from './icons/InfoIcon';
-import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner, PersonalGoal, GoalType, TeamGoal } from '../types';
+import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner, PersonalGoal, GoalType, TeamGoal, UserRole } from '../types';
 import { formatDate, calculateExecutionPercentage, getSessionGoalProgress, calculateHardHitPercentage, formatGoalName, calculateStrikeoutPercentage, getCurrentTeamMetricValue, formatTeamGoalName, describeRelativeDay, resolveDrillTypeForSet } from '../utils/helpers';
 import { AnalyticsCharts } from './AnalyticsCharts';
 import { TARGET_ZONES, PITCH_TYPES, COUNT_SITUATIONS, BASE_RUNNERS, OUTS_OPTIONS, DRILL_TYPES, GOAL_TYPES } from '../constants';
@@ -19,6 +19,7 @@ import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
 import { BreakdownBar } from './BreakdownBar';
 import { SessionSaveAnimation } from './SessionSaveAnimation';
 import { Tooltip } from './Tooltip';
+import { SessionDetail } from './SessionDetail';
 
 const doesSetMatchGoal = (goal: PersonalGoal, session: Session, set: SetResult, drills: Drill[]) => {
     if (goal.drillType) {
@@ -150,6 +151,9 @@ const GoalProgress: React.FC<{
                 <div>
                     <h4 className="font-semibold text-card-foreground">{formatGoalName(goal)}</h4>
                     <p className="text-xs text-muted-foreground">Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        {goal.createdByRole === UserRole.Coach ? 'Coach-assigned goal' : 'Self-set goal'}
+                    </p>
                 </div>
                 <button
                     onClick={(event) => {
@@ -770,6 +774,234 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
     );
 };
 
+interface PitchingFormValues {
+    totalPitches: number;
+    strikes: number;
+    balls: number;
+    avgVelocity?: number;
+    notes?: string;
+}
+
+const PitchingSessionForm: React.FC<{
+    onSave: (values: PitchingFormValues) => Promise<void> | void;
+    onCancel: () => void;
+    isSaving: boolean;
+    errorMessage?: string | null;
+    resetKey: number;
+}> = ({ onSave, onCancel, isSaving, errorMessage, resetKey }) => {
+    const [totalPitches, setTotalPitches] = useState(60);
+    const [strikes, setStrikes] = useState(40);
+    const [balls, setBalls] = useState(20);
+    const [avgVelocity, setAvgVelocity] = useState<number | ''>(82);
+    const [notes, setNotes] = useState('');
+
+    useEffect(() => {
+        setTotalPitches(60);
+        setStrikes(40);
+        setBalls(20);
+        setAvgVelocity(82);
+        setNotes('');
+    }, [resetKey]);
+
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        await onSave({
+            totalPitches,
+            strikes,
+            balls,
+            avgVelocity: typeof avgVelocity === 'number' ? avgVelocity : undefined,
+            notes,
+        });
+    };
+
+    const strikePercentage = totalPitches > 0 ? Math.round((strikes / totalPitches) * 100) : 0;
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="bg-card border border-border rounded-lg shadow-sm p-6 space-y-6">
+                <div>
+                    <h3 className="text-lg font-semibold text-foreground">Pitching Session Summary</h3>
+                    <p className="text-sm text-muted-foreground">Log the overall bullpen metrics for this outing.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground">Total Pitches</label>
+                        <input
+                            type="number"
+                            min={0}
+                            value={totalPitches}
+                            onChange={(e) => setTotalPitches(Math.max(0, Number(e.target.value)))}
+                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground">Strikes</label>
+                        <input
+                            type="number"
+                            min={0}
+                            value={strikes}
+                            onChange={(e) => setStrikes(Math.max(0, Number(e.target.value)))}
+                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground">Balls</label>
+                        <input
+                            type="number"
+                            min={0}
+                            value={balls}
+                            onChange={(e) => setBalls(Math.max(0, Number(e.target.value)))}
+                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground">Average Velocity (MPH)</label>
+                        <input
+                            type="number"
+                            min={0}
+                            value={avgVelocity}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setAvgVelocity(val === '' ? '' : Math.max(0, Number(val)));
+                            }}
+                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
+                        />
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                    <div className="rounded-xl border border-border p-3">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Strike %</p>
+                        <p className="text-2xl font-bold text-primary">{strikePercentage}%</p>
+                    </div>
+                    <div className="rounded-xl border border-border p-3">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Strikes</p>
+                        <p className="text-2xl font-bold text-foreground">{strikes}</p>
+                    </div>
+                    <div className="rounded-xl border border-border p-3">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Balls</p>
+                        <p className="text-2xl font-bold text-foreground">{balls}</p>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-muted-foreground">Notes / Focus</label>
+                    <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        rows={4}
+                        className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2 text-sm"
+                        placeholder="What were you working on? Velocity goals, pitch-mix focus, etc."
+                    />
+                </div>
+                {errorMessage && (
+                    <p className="text-sm text-destructive" role="status" aria-live="assertive">
+                        {errorMessage}
+                    </p>
+                )}
+                <div className="flex justify-end gap-4">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="bg-muted hover:bg-muted/80 text-foreground font-bold py-2 px-6 rounded-lg"
+                        disabled={isSaving}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        disabled={isSaving}
+                        className="bg-secondary hover:bg-secondary/90 disabled:opacity-60 text-secondary-foreground font-bold py-2 px-6 rounded-lg"
+                    >
+                        {isSaving ? 'Saving…' : 'Save Pitching Session'}
+                    </button>
+                </div>
+            </div>
+        </form>
+    );
+};
+
+const summarizePitchingSession = (session: Session) => {
+    const summarySet = session.sets[0];
+    const total = summarySet ? Math.max(0, summarySet.repsAttempted) : 0;
+    const strikes = summarySet ? Math.max(0, summarySet.repsExecuted) : 0;
+    const balls = summarySet ? Math.max(0, summarySet.strikeouts ?? total - strikes) : 0;
+    const strikePct = total > 0 ? Math.round((strikes / total) * 100) : 0;
+    return { total, strikes, balls, strikePct };
+};
+
+const PitchingOverviewCard: React.FC<{ stats: PitchingStatsSummary; sessions: Session[] }> = ({ stats, sessions }) => {
+    const recentSessions = sessions.slice(0, 3);
+    const lastSessionLabel = stats.lastSessionDate ? formatDate(stats.lastSessionDate) : 'No sessions yet';
+    const lastSessionDetail = stats.lastSessionDate ? `${stats.recentStrikePercentage}% strike rate` : 'Log a bullpen to unlock insights.';
+
+    return (
+        <div className="bg-card border border-border rounded-xl shadow-sm p-6 space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h2 className="text-xl font-semibold text-foreground">Pitching Overview</h2>
+                    <p className="text-sm text-muted-foreground">Bullpen strike efficiency and workload totals.</p>
+                </div>
+                <div className="text-right">
+                    <p className="text-4xl font-bold text-primary">{stats.overallStrikePercentage}%</p>
+                    <p className="text-xs uppercase text-muted-foreground tracking-wide">Overall Strike %</p>
+                </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Sessions</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.totalSessions}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Pitches</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.totalPitches}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Strike %</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.avgStrikePercentage}%</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Best Strike %</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.bestStrikePercentage}%</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Session</p>
+                    <p className="text-sm font-semibold text-foreground">{lastSessionLabel}</p>
+                    <p className="text-xs text-muted-foreground">{lastSessionDetail}</p>
+                </div>
+                {stats.avgVelocity !== null && (
+                    <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Velo</p>
+                        <p className="text-xl font-semibold text-foreground">{stats.avgVelocity} mph</p>
+                    </div>
+                )}
+            </div>
+            <div>
+                <h3 className="text-lg font-semibold text-foreground mb-3">Recent Pitching Sessions</h3>
+                {recentSessions.length > 0 ? (
+                    <ul className="divide-y divide-border">
+                        {recentSessions.map((session) => {
+                            const summary = summarizePitchingSession(session);
+                            return (
+                                <li key={session.id} className="py-3 flex items-center justify-between text-sm">
+                                    <div>
+                                        <p className="font-semibold text-card-foreground">{formatDate(session.date)}</p>
+                                        <p className="text-xs text-muted-foreground">{summary.total} pitches • {summary.strikePct}% strike rate</p>
+                                    </div>
+                                    <div className="text-right text-xs text-muted-foreground">
+                                        <p><span className="text-foreground font-semibold">{summary.strikes}</span> strikes</p>
+                                        <p><span className="text-foreground font-semibold">{summary.balls}</span> balls</p>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                ) : (
+                    <p className="text-sm text-muted-foreground">Log your first pitching session to unlock bullpen insights.</p>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const LogSession: React.FC<{
     assignedDrill: Drill | null;
     onSave: (sessionData: { name: string; drillId?: string; sets: SetResult[]; reflection?: string }) => Promise<void>;
@@ -1023,7 +1255,12 @@ const LogSession: React.FC<{
     );
 };
 
-const SessionHistory: React.FC<{ sessions: Session[]; drills: Drill[]; onSelectSession: (session: Session) => void; }> = ({ sessions, drills, onSelectSession }) => {
+const SessionHistory: React.FC<{
+    sessions: Session[];
+    drills: Drill[];
+    onSelectSession: (session: Session) => void;
+    onEditSession?: (session: Session) => void;
+}> = ({ sessions, drills, onSelectSession, onEditSession }) => {
     return (
         <div>
             <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
@@ -1038,12 +1275,21 @@ const SessionHistory: React.FC<{ sessions: Session[]; drills: Drill[]; onSelectS
                         const editDescriptor = describeRelativeDay(session.updatedAt);
                         const hasReflection = Boolean(session.reflection && session.reflection.trim().length > 0);
 
+                        const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                onSelectSession(session);
+                            }
+                        };
+
                         return (
                             <li key={session.id} className="hover:bg-muted/40 transition-colors">
-                                <button
-                                    type="button"
+                                <div
+                                    role="button"
+                                    tabIndex={0}
                                     onClick={() => onSelectSession(session)}
-                                    className="w-full text-left grid gap-4 p-4 items-center md:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr]"
+                                    onKeyDown={handleKeyDown}
+                                    className="w-full grid gap-4 p-4 items-center md:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr]"
                                 >
                                     <div>
                                         <p className="font-semibold text-primary">{session.name}</p>
@@ -1067,8 +1313,20 @@ const SessionHistory: React.FC<{ sessions: Session[]; drills: Drill[]; onSelectS
                                             <NoteIcon filled={hasReflection} className={hasReflection ? 'text-secondary' : 'text-muted-foreground'} />
                                             {hasReflection ? 'Reflection' : 'No notes'}
                                         </span>
+                                        {onEditSession && (
+                                            <button
+                                                type="button"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    onEditSession(session);
+                                                }}
+                                                className="text-xs font-semibold px-3 py-1 rounded-md border border-border hover:bg-muted"
+                                            >
+                                                Edit
+                                            </button>
+                                        )}
                                     </div>
-                                </button>
+                                </div>
                             </li>
                         );
                     }) : (
@@ -1380,6 +1638,10 @@ export const PlayerView: React.FC = () => {
         updateSession,
         getTeamsForPlayer,
         joinTeamAsPlayer,
+        recordSessionIntent,
+        setRecordSessionIntent,
+        getPitchingSessionsForPlayer,
+        getPitchingStatsForSessions,
     } = useContext(DataContext)!;
 
     const [drillToLog, setDrillToLog] = useState<Drill | null>(null);
@@ -1387,8 +1649,11 @@ export const PlayerView: React.FC = () => {
     const [isSavingSession, setIsSavingSession] = useState(false);
     const [logSessionError, setLogSessionError] = useState<string | null>(null);
     const [sessionToEdit, setSessionToEdit] = useState<Session | null>(null);
+    const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [isUpdatingSession, setIsUpdatingSession] = useState(false);
     const [sessionUpdateError, setSessionUpdateError] = useState<string | null>(null);
+    const [logMode, setLogMode] = useState<'hitting' | 'pitching'>('hitting');
+    const [pitchingFormResetKey, setPitchingFormResetKey] = useState(0);
 
     const player = currentUser as Player;
     const [selectedTeamId, setSelectedTeamId] = useState<string | undefined>(player.teamIds[0]);
@@ -1407,6 +1672,16 @@ export const PlayerView: React.FC = () => {
             setSelectedTeamId(player.teamIds[0]);
         }
     }, [player.teamIds, selectedTeamId]);
+
+    useEffect(() => {
+        if (!recordSessionIntent) {
+            return;
+        }
+        setLogMode(recordSessionIntent.type);
+        setDrillToLog(null);
+        setCurrentView('log_session');
+        setRecordSessionIntent(undefined);
+    }, [recordSessionIntent, setRecordSessionIntent]);
 
     const handleJoinTeam = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -1440,16 +1715,23 @@ export const PlayerView: React.FC = () => {
     const allTeamDrills = useMemo(() => (selectedTeamId ? getDrillsForTeam(selectedTeamId) : []), [selectedTeamId, getDrillsForTeam]);
     const goals = useMemo(() => getGoalsForPlayer(player.id), [player.id, getGoalsForPlayer]);
     const teamGoals = useMemo(() => (selectedTeamId ? getTeamGoals(selectedTeamId) : []), [selectedTeamId, getTeamGoals]);
+    const pitchingSessions = useMemo(() => {
+        const sessionsForPlayer = getPitchingSessionsForPlayer(player.id, selectedTeamId);
+        return sessionsForPlayer.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [player.id, selectedTeamId, getPitchingSessionsForPlayer]);
+    const pitchingStats = useMemo(() => getPitchingStatsForSessions(pitchingSessions), [pitchingSessions, getPitchingStatsForSessions]);
 
 
     const handleStartAssignedSession = (drill: Drill) => {
         setLogSessionError(null);
+        setLogMode('hitting');
         setDrillToLog(drill);
         setCurrentView('log_session');
     };
     
     const handleStartAdHocSession = () => {
         setLogSessionError(null);
+        setLogMode('hitting');
         setDrillToLog(null);
         setCurrentView('log_session');
     };
@@ -1460,7 +1742,7 @@ export const PlayerView: React.FC = () => {
         setCurrentView('dashboard');
     }
 
-    const handleLogSession = async (sessionData: { name: string; drillId?: string; sets: SetResult[]; reflection?: string }) => {
+    const handleLogHittingSession = async (sessionData: { name: string; drillId?: string; sets: SetResult[]; reflection?: string }) => {
         if (!selectedTeamId) {
             setLogSessionError('Join a team before logging sessions.');
             return;
@@ -1487,6 +1769,65 @@ export const PlayerView: React.FC = () => {
             setIsSavingSession(false);
         }
     };
+
+    const handleLogPitchingSession = async (values: PitchingFormValues) => {
+        if (!selectedTeamId) {
+            setLogSessionError('Join a team before logging sessions.');
+            return;
+        }
+
+        const totalPitches = Math.max(0, values.totalPitches);
+        const strikes = Math.min(totalPitches, Math.max(0, values.strikes));
+        const balls = Math.min(totalPitches, Math.max(0, values.balls));
+        const avgVelocity = values.avgVelocity !== undefined ? Math.max(0, values.avgVelocity) : undefined;
+        const strikePercentage = totalPitches > 0 ? Math.round((strikes / totalPitches) * 100) : 0;
+        const summaryParts = [
+            `Strikes: ${strikes}`,
+            `Balls: ${balls}`,
+            `Strike %: ${strikePercentage}%`,
+        ];
+        if (avgVelocity !== undefined) {
+            summaryParts.push(`Avg Velo: ${avgVelocity} mph`);
+        }
+        if (values.notes?.trim()) {
+            summaryParts.push(`Notes: ${values.notes.trim()}`);
+        }
+        const combinedNotes = summaryParts.join(' | ');
+
+        setIsSavingSession(true);
+        setLogSessionError(null);
+
+        try {
+            const newSession = await logSession({
+                name: 'Pitching Session',
+                teamId: selectedTeamId,
+                type: 'pitching',
+                sets: [
+                    {
+                        setNumber: 1,
+                        repsAttempted: totalPitches,
+                        repsExecuted: strikes,
+                        hardHits: 0,
+                        strikeouts: balls,
+                        grade: strikePercentage > 0 ? Math.min(10, Math.max(1, Math.round(strikePercentage / 10))) : undefined,
+                        notes: combinedNotes,
+                        drillLabel: 'Pitching Session',
+                    },
+                ],
+                reflection: values.notes?.trim() || undefined,
+            });
+
+            if (newSession) {
+                setLastSavedSession(newSession);
+                setPitchingFormResetKey((prev) => prev + 1);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to save this session. Please try again.';
+            setLogSessionError(message);
+        } finally {
+            setIsSavingSession(false);
+        }
+    };
     
     const handleCloseAnimation = () => {
         setLastSavedSession(null);
@@ -1503,6 +1844,10 @@ export const PlayerView: React.FC = () => {
         if (isUpdatingSession) return;
         setSessionToEdit(null);
         setSessionUpdateError(null);
+    };
+
+    const handleOpenSessionDetail = (session: Session) => {
+        setSelectedSession(session);
     };
 
     const handleSaveSessionEdits = async (updates: { name: string; sets: SetResult[]; reflection?: string }) => {
@@ -1530,7 +1875,7 @@ export const PlayerView: React.FC = () => {
     
      const pageTitles: { [key: string]: string } = {
         dashboard: `Welcome, ${player.name.split(' ')[0]}!`,
-        log_session: drillToLog ? `Log: ${drillToLog.name}` : 'Log Ad-Hoc Session',
+        log_session: logMode === 'pitching' ? 'Log: Pitching Session' : drillToLog ? `Log: ${drillToLog.name}` : 'Log Ad-Hoc Session',
         history: 'My Session History',
         analytics: 'My Analytics',
         profile: 'Profile'
@@ -1656,29 +2001,73 @@ export const PlayerView: React.FC = () => {
     const renderContent = () => {
         switch(currentView) {
             case 'dashboard':
-                return <PlayerDashboard 
-                    player={player}
-                    assignedDrills={assignedDrills}
-                    recentSessions={sessions}
-                    drills={allTeamDrills}
-                    goals={goals}
-                    teamGoals={teamGoals}
-                    teamSessions={teamSessions}
-                    onStartAssignedSession={handleStartAssignedSession}
-                    activeTeamId={selectedTeamId}
-                />;
+                return (
+                    <div className="space-y-6">
+                        <PlayerDashboard 
+                            player={player}
+                            assignedDrills={assignedDrills}
+                            recentSessions={sessions}
+                            drills={allTeamDrills}
+                            goals={goals}
+                            teamGoals={teamGoals}
+                            teamSessions={teamSessions}
+                            onStartAssignedSession={handleStartAssignedSession}
+                            activeTeamId={selectedTeamId}
+                        />
+                        <PitchingOverviewCard stats={pitchingStats} sessions={pitchingSessions} />
+                    </div>
+                );
             case 'log_session':
                 return (
-                    <LogSession
-                        assignedDrill={drillToLog}
-                        onSave={handleLogSession}
-                        onCancel={handleCancelLogSession}
-                        isSaving={isSavingSession}
-                        errorMessage={logSessionError}
-                    />
+                    <div className="space-y-6">
+                        <div className="inline-flex rounded-full border border-border overflow-hidden">
+                            {(['hitting', 'pitching'] as const).map((mode) => (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => {
+                                        setLogSessionError(null);
+                                        setLogMode(mode);
+                                        if (mode === 'pitching') {
+                                            setDrillToLog(null);
+                                        }
+                                    }}
+                                    className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                                        logMode === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                                    }`}
+                                >
+                                    {mode === 'hitting' ? 'Hitting Session' : 'Pitching Session'}
+                                </button>
+                            ))}
+                        </div>
+                        {logMode === 'hitting' ? (
+                            <LogSession
+                                assignedDrill={drillToLog}
+                                onSave={handleLogHittingSession}
+                                onCancel={handleCancelLogSession}
+                                isSaving={isSavingSession}
+                                errorMessage={logSessionError}
+                            />
+                        ) : (
+                            <PitchingSessionForm
+                                onSave={handleLogPitchingSession}
+                                onCancel={handleCancelLogSession}
+                                isSaving={isSavingSession}
+                                errorMessage={logSessionError}
+                                resetKey={pitchingFormResetKey}
+                            />
+                        )}
+                    </div>
                 );
             case 'history':
-                return <SessionHistory sessions={sessions} drills={allTeamDrills} onSelectSession={handleOpenSessionEditor} />;
+                return (
+                    <SessionHistory
+                        sessions={sessions}
+                        drills={allTeamDrills}
+                        onSelectSession={handleOpenSessionDetail}
+                        onEditSession={handleOpenSessionEditor}
+                    />
+                );
             case 'analytics':
                  return (
                     <div className="space-y-8">
@@ -1818,6 +2207,17 @@ export const PlayerView: React.FC = () => {
                 </div>
             </Modal>
             <SessionSaveAnimation session={lastSavedSession} onClose={handleCloseAnimation} />
+            {selectedSession && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                    <div className="bg-card border border-border rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <SessionDetail
+                            session={selectedSession}
+                            isCoach={false}
+                            onClose={() => setSelectedSession(null)}
+                        />
+                    </div>
+                </div>
+            )}
         </>
     );
 };

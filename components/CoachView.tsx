@@ -1,5 +1,5 @@
 import React, { useState, useContext, useMemo, useEffect, useRef } from 'react';
-import { DataContext } from '../contexts/DataContext';
+import { DataContext, PitchingStatsSummary } from '../contexts/DataContext';
 import { Dashboard } from './Dashboard';
 import { ProfileTab } from './ProfileTab';
 import { ProfileIcon } from './icons/ProfileIcon';
@@ -12,7 +12,7 @@ import { Player, Team, Drill, Session, DayOfWeek, TargetZone, PitchType, CountSi
 import { AnalyticsCharts } from './AnalyticsCharts';
 import { Modal } from './Modal';
 import { TARGET_ZONES, PITCH_TYPES, COUNT_SITUATIONS, BASE_RUNNERS, OUTS_OPTIONS, GOAL_TYPES, DRILL_TYPES } from '../constants';
-import { DRILL_TEMPLATES, DrillTemplate, TEAM_GOAL_TEMPLATES, TeamGoalTemplate } from '../constants/templates';
+import { DRILL_TEMPLATES, DrillTemplate, TEAM_GOAL_TEMPLATES, TeamGoalTemplate } from '../templates';
 import { formatDate, calculateExecutionPercentage, getSessionGoalProgress, calculateHardHitPercentage, getCurrentMetricValue, formatGoalName, calculateStrikeoutPercentage, getCurrentTeamMetricValue, formatTeamGoalName, resolveDrillTypeForSet } from '../utils/helpers';
 import { Avatar } from './Avatar';
 import { PlayerRadarChart } from './PlayerRadarChart';
@@ -21,6 +21,7 @@ import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
 import { BreakdownBar } from './BreakdownBar';
 import { Tooltip } from './Tooltip';
 import { Spinner } from './Spinner';
+import { SessionDetail } from './SessionDetail';
 
 
 // --- ANALYTICS SUB-COMPONENTS ---
@@ -154,6 +155,107 @@ const CoachAnalyticsPage: React.FC<{ analyticsData: CoachAnalyticsData }> = ({ a
                     </div>
                 </div>
             </div>
+        </div>
+    );
+};
+
+const summarizeTeamPitchingSession = (session: Session) => {
+    const summarySet = session.sets[0];
+    const total = summarySet ? Math.max(0, summarySet.repsAttempted) : 0;
+    const strikes = summarySet ? Math.max(0, summarySet.repsExecuted) : 0;
+    const balls = summarySet ? Math.max(0, summarySet.strikeouts ?? total - strikes) : 0;
+    const strikePct = total > 0 ? Math.round((strikes / total) * 100) : 0;
+    return { total, strikes, balls, strikePct };
+};
+
+const TeamPitchingOverview: React.FC<{ stats: PitchingStatsSummary }> = ({ stats }) => {
+    const lastSessionLabel = stats.lastSessionDate ? formatDate(stats.lastSessionDate) : 'Awaiting first log';
+    const lastSessionDetail = stats.lastSessionDate ? `${stats.recentStrikePercentage}% strike rate` : 'Encourage pitchers to log their bullpen.';
+
+    return (
+        <div className="bg-card border border-border rounded-xl shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+                <div>
+                    <h3 className="text-lg font-semibold text-foreground">Team Pitching Overview</h3>
+                    <p className="text-sm text-muted-foreground">Bullpen volume and strike efficiency.</p>
+                </div>
+                <div className="text-right">
+                    <p className="text-3xl font-bold text-primary">{stats.overallStrikePercentage}%</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Team Strike %</p>
+                </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Sessions</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.totalSessions}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Pitches</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.totalPitches}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Strike %</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.avgStrikePercentage}%</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Best Strike %</p>
+                    <p className="text-xl font-semibold text-foreground">{stats.bestStrikePercentage}%</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Session</p>
+                    <p className="text-sm font-semibold text-foreground">{lastSessionLabel}</p>
+                    <p className="text-xs text-muted-foreground">{lastSessionDetail}</p>
+                </div>
+                {stats.avgVelocity !== null && (
+                    <div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Velo</p>
+                        <p className="text-xl font-semibold text-foreground">{stats.avgVelocity} mph</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const RecentTeamPitchingSessions: React.FC<{ sessions: Session[]; players: Player[] }> = ({ sessions, players }) => {
+    const latestSessions = sessions.slice(0, 5);
+    const playerNameById = useMemo(() => {
+        return players.reduce<Record<string, string>>((acc, player) => {
+            acc[player.id] = player.name;
+            return acc;
+        }, {});
+    }, [players]);
+
+    const visibleCount = Math.min(latestSessions.length, 5);
+
+    return (
+        <div className="bg-card border border-border rounded-xl shadow-sm p-6">
+            <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold text-foreground">Recent Pitching Sessions</h3>
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">{visibleCount > 0 ? `Last ${visibleCount}` : 'No Logs'}</span>
+            </div>
+            {latestSessions.length > 0 ? (
+                <ul className="divide-y divide-border text-sm">
+                    {latestSessions.map((session) => {
+                        const summary = summarizeTeamPitchingSession(session);
+                        const playerName = playerNameById[session.playerId] ?? 'Player';
+                        return (
+                            <li key={session.id} className="py-3 flex items-center justify-between gap-4">
+                                <div>
+                                    <p className="font-semibold text-card-foreground">{playerName}</p>
+                                    <p className="text-xs text-muted-foreground">{formatDate(session.date)} • {summary.total} pitches</p>
+                                </div>
+                                <div className="text-right text-xs text-muted-foreground">
+                                    <p className="font-semibold text-foreground">{summary.strikePct}% strike rate</p>
+                                    <p>{summary.strikes} strikes / {summary.balls} balls</p>
+                                </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+            ) : (
+                <p className="text-sm text-muted-foreground">No bullpen logs yet. Encourage pitchers to record their sessions.</p>
+            )}
         </div>
     );
 };
@@ -786,17 +888,25 @@ const CoachDashboard: React.FC<{
                                 const goalType = drill ? drill.goalType : 'Execution %';
 
                                 return (
-                                    <li key={session.id} className="py-3 flex items-center">
-                                        <Avatar name={player.name} className="w-10 h-10 mr-4" />
-                                        <div className="flex-1">
-                                            <p className="font-semibold text-card-foreground">{player.name} completed <span className="text-primary font-bold">{session.name}</span></p>
-                                            <p className="text-sm text-muted-foreground">{formatDate(session.date)}</p>
-                                        </div>
-                                        <div className={`px-3 py-1 text-sm font-semibold rounded-full ${progress.isSuccess ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'}`}>
-                                            {goalType}: {progress.value}%
-                                        </div>
+                                    <li key={session.id} className="py-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedSession(session)}
+                                            className="w-full flex items-center gap-4 px-2 py-2 rounded-lg text-left hover:bg-muted/60 transition-colors"
+                                        >
+                                            <Avatar name={player.name} className="w-10 h-10" />
+                                            <div className="flex-1">
+                                                <p className="font-semibold text-card-foreground">
+                                                    {player.name} completed <span className="text-primary font-bold">{session.name}</span>
+                                                </p>
+                                                <p className="text-sm text-muted-foreground">{formatDate(session.date)}</p>
+                                            </div>
+                                            <div className={`px-3 py-1 text-sm font-semibold rounded-full ${progress.isSuccess ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'}`}>
+                                                {goalType}: {progress.value}%
+                                            </div>
+                                        </button>
                                     </li>
-                                )
+                                );
                             })}
                             {recentSessions.length === 0 && <p className="text-muted-foreground text-center py-4">No recent activity.</p>}
                         </ul>
@@ -1032,9 +1142,10 @@ const PlayerList: React.FC<{
     players: Player[], 
     sessionsByPlayer: Record<string, Session[]>, 
     onPlayerClick: (player: Player) => void,
+    onAssignGoal: (playerId: string) => void,
     selectedGradYear: number | null,
     setSelectedGradYear: (year: number | null) => void 
-}> = ({ players, sessionsByPlayer, onPlayerClick, selectedGradYear, setSelectedGradYear }) => {
+}> = ({ players, sessionsByPlayer, onPlayerClick, onAssignGoal, selectedGradYear, setSelectedGradYear }) => {
     
     const gradYears = useMemo(() => {
         const years = new Set<number>(players.map(p => p.profile.gradYear));
@@ -1085,12 +1196,24 @@ const PlayerList: React.FC<{
 
                 return (
                     <div key={player.id} onClick={() => onPlayerClick(player)} className="bg-card border border-border rounded-lg shadow-sm p-4 space-y-3 cursor-pointer transition-transform hover:scale-105 hover:shadow-lg">
-                        <div className="flex items-center gap-4">
-                            <Avatar name={player.name} className="w-12 h-12 text-lg" />
-                            <div>
-                                <h3 className="font-bold text-lg text-foreground">{player.name}</h3>
-                                <p className="text-sm text-muted-foreground">Sessions: {playerSessions.length}</p>
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                                <Avatar name={player.name} className="w-12 h-12 text-lg" />
+                                <div>
+                                    <h3 className="font-bold text-lg text-foreground">{player.name}</h3>
+                                    <p className="text-sm text-muted-foreground">Sessions: {playerSessions.length}</p>
+                                </div>
                             </div>
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onAssignGoal(player.id);
+                                }}
+                                className="text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded"
+                            >
+                                Assign Goal
+                            </button>
                         </div>
                          <div className="flex justify-around text-center pt-2 border-t border-border">
                             <div>
@@ -1781,7 +1904,7 @@ const TeamGoalsOverview: React.FC<{
 );
 
 const CreateTeamForm: React.FC<{
-    onSave: (teamName: string, seasonYear: number) => Promise<void> | void;
+    onSave: (teamName: string, seasonYear: number) => Promise<void>;
     onJoin?: (joinCode: string) => Promise<void>;
     onCancel?: () => void;
 }> = ({ onSave, onJoin, onCancel }) => {
@@ -1791,10 +1914,27 @@ const CreateTeamForm: React.FC<{
     const [joinCode, setJoinCode] = useState('');
     const [joinError, setJoinError] = useState<string | null>(null);
     const [isJoining, setIsJoining] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
+    const [isCreating, setIsCreating] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSave(teamName, seasonYear);
+        setCreateError(null);
+        if (!teamName.trim()) {
+            setCreateError('Enter a team name.');
+            return;
+        }
+        setIsCreating(true);
+        try {
+            await onSave(teamName.trim(), seasonYear);
+            setTeamName('');
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'Unable to create that team right now.';
+            setCreateError(message);
+        } finally {
+            setIsCreating(false);
+        }
     };
 
     const handleJoinSubmit = async (e: React.FormEvent) => {
@@ -1900,9 +2040,14 @@ const CreateTeamForm: React.FC<{
                             className="mt-1 block w-full bg-background border-input rounded-md py-2 px-3"
                         />
                     </div>
+                    {createError && <p className="text-sm text-destructive">{createError}</p>}
                     <div className="flex justify-end pt-2">
-                        <button type="submit" className="py-2 px-4 bg-primary text-primary-foreground rounded-md">
-                            Create Team
+                        <button
+                            type="submit"
+                            className="py-2 px-4 bg-primary text-primary-foreground rounded-md disabled:opacity-60"
+                            disabled={isCreating}
+                        >
+                            {isCreating ? 'Creating…' : 'Create Team'}
                         </button>
                     </div>
                 </form>
@@ -1960,7 +2105,7 @@ const InvitePlayersModal: React.FC<{ isOpen: boolean; onClose: () => void; codes
 export const CoachView: React.FC = () => {
     const [currentView, setCurrentView] = useState('dashboard');
     const [showCoachTips, setShowCoachTips] = useState(true);
-    const { currentUser, getTeamsForCoach, getPlayersInTeam, getDrillsForTeam, getSessionsForTeam, createDrill, createAssignment, getGoalsForPlayer, createTeam, getJoinCodesForTeam, getTeamGoals, createTeamGoal, deleteTeamGoal, joinTeamAsCoach, activeTeam, setActiveTeamId, databaseStatus, databaseError } = useContext(DataContext)!;
+    const { currentUser, getTeamsForCoach, getPlayersInTeam, getDrillsForTeam, getSessionsForTeam, createDrill, createAssignment, getGoalsForPlayer, createTeam, getJoinCodesForTeam, getTeamGoals, createTeamGoal, deleteTeamGoal, joinTeamAsCoach, activeTeam, setActiveTeamId, databaseStatus, databaseError, setCoachFeedbackOnSession, getPitchingSessionsForTeam, getPitchingStatsForSessions, createPersonalGoalForPlayerAsCoach } = useContext(DataContext)!;
     const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
     const [selectedGradYear, setSelectedGradYear] = useState<number | null>(null);
     const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
@@ -1972,9 +2117,21 @@ export const CoachView: React.FC = () => {
     const [goalTemplateStatus, setGoalTemplateStatus] = useState<StatusMessage | null>(null);
     const [pendingDrillTemplateId, setPendingDrillTemplateId] = useState<string | null>(null);
     const [pendingGoalTemplateId, setPendingGoalTemplateId] = useState<string | null>(null);
+    const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+    const [savingFeedback, setSavingFeedback] = useState(false);
     const drillStatusTimeout = useRef<number | null>(null);
     const assignmentStatusTimeout = useRef<number | null>(null);
     const goalTemplateStatusTimeout = useRef<number | null>(null);
+    const getDateString = (offsetDays = 0) => new Date(Date.now() + offsetDays * 86400000).toISOString().split('T')[0];
+    const [goalModalPlayerId, setGoalModalPlayerId] = useState<string | null>(null);
+    const [goalMetric, setGoalMetric] = useState<GoalType>('Execution %');
+    const [goalTargetValue, setGoalTargetValue] = useState<number>(75);
+    const [goalStartDate, setGoalStartDate] = useState<string>(() => getDateString());
+    const [goalTargetDate, setGoalTargetDate] = useState<string>(() => getDateString(30));
+    const [goalStatus, setGoalStatus] = useState<'Active' | 'Completed' | 'Archived'>('Active');
+    const [goalDrillType, setGoalDrillType] = useState<DrillType | undefined>(undefined);
+    const [goalSaving, setGoalSaving] = useState(false);
+    const [goalError, setGoalError] = useState<string | null>(null);
     
     const coachTeams = useMemo(() => getTeamsForCoach(currentUser!.id), [currentUser, getTeamsForCoach]);
     const hasTeamIds = (currentUser?.coachTeamIds?.length ?? 0) > 0;
@@ -1990,6 +2147,14 @@ export const CoachView: React.FC = () => {
     const drills = useMemo(() => activeTeam ? getDrillsForTeam(activeTeam.id) : [], [activeTeam, getDrillsForTeam]);
     const sessions = useMemo(() => activeTeam ? getSessionsForTeam(activeTeam.id) : [], [activeTeam, getSessionsForTeam]);
     const teamGoals = useMemo(() => activeTeam ? getTeamGoals(activeTeam.id) : [], [activeTeam, getTeamGoals]);
+    const teamPitchingSessions = useMemo(() => {
+        if (!activeTeam) {
+            return [] as Session[];
+        }
+        const sessionsForTeam = getPitchingSessionsForTeam(activeTeam.id);
+        return sessionsForTeam.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [activeTeam, getPitchingSessionsForTeam]);
+    const teamPitchingStats = useMemo(() => getPitchingStatsForSessions(teamPitchingSessions), [teamPitchingSessions, getPitchingStatsForSessions]);
 
     const sessionsByPlayer = useMemo(() => {
         return sessions.reduce((acc, session) => {
@@ -2000,6 +2165,51 @@ export const CoachView: React.FC = () => {
             return acc;
         }, {} as Record<string, Session[]>);
     }, [sessions]);
+    const resetGoalModalState = () => {
+        setGoalMetric('Execution %');
+        setGoalTargetValue(75);
+        setGoalStartDate(getDateString());
+        setGoalTargetDate(getDateString(30));
+        setGoalStatus('Active');
+        setGoalDrillType(undefined);
+        setGoalError(null);
+    };
+    const handleOpenAssignGoal = (playerId: string) => {
+        resetGoalModalState();
+        setGoalModalPlayerId(playerId);
+    };
+    const handleCloseGoalModal = (force = false) => {
+        if (goalSaving && !force) return;
+        setGoalModalPlayerId(null);
+        resetGoalModalState();
+    };
+    const handleSaveCoachGoal = async () => {
+        if (!goalModalPlayerId || !activeTeam) {
+            return;
+        }
+        try {
+            setGoalSaving(true);
+            setGoalError(null);
+            const payload: Omit<PersonalGoal, 'id' | 'playerId' | 'teamId' | 'createdByUserId' | 'createdByRole'> = {
+                metric: goalMetric,
+                targetValue: goalTargetValue,
+                startDate: goalStartDate,
+                targetDate: goalTargetDate,
+                status: goalStatus,
+                targetZones: [],
+                pitchTypes: [],
+                ...(goalDrillType ? { drillType: goalDrillType } : {}),
+            };
+            await createPersonalGoalForPlayerAsCoach(goalModalPlayerId, activeTeam.id, payload);
+            handleCloseGoalModal(true);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unable to save this goal.';
+            setGoalError(message);
+        } finally {
+            setGoalSaving(false);
+        }
+    };
+    const goalModalPlayer = goalModalPlayerId ? players.find((player) => player.id === goalModalPlayerId) : null;
 
 
     const setTimedStatus = (
@@ -2096,18 +2306,15 @@ export const CoachView: React.FC = () => {
     };
 
     const handleCreateTeam = async (teamName: string, seasonYear: number) => {
-        try {
-            const newTeam = await createTeam({ name: teamName, seasonYear });
-            if (newTeam) {
-                setActiveTeamId(newTeam.teamId);
-                setCurrentView('dashboard');
-                setActiveTeamCodes({ playerCode: newTeam.playerCode, coachCode: newTeam.coachCode });
-                setIsInviteModalOpen(true);
-            }
-        } finally {
+        const newTeam = await createTeam({ name: teamName, seasonYear });
+        if (newTeam) {
+            setActiveTeamId(newTeam.teamId);
+            setCurrentView('dashboard');
+            setActiveTeamCodes({ playerCode: newTeam.playerCode, coachCode: newTeam.coachCode });
+            setIsInviteModalOpen(true);
             setIsCreateTeamModalOpen(false);
         }
-    }
+    };
 
     const handlePlayerClick = (player: Player) => {
         setSelectedPlayer(player);
@@ -2388,6 +2595,7 @@ export const CoachView: React.FC = () => {
     }[currentView];
 
     return (
+        <>
         <Dashboard 
             navItems={navItems} 
             currentView={currentView} 
@@ -2449,13 +2657,19 @@ export const CoachView: React.FC = () => {
                 </div>
             )}
             {currentView === 'dashboard' && (
-                <CoachDashboard
-                    players={players}
-                    drills={drills}
-                    sessions={sessions}
-                    teamGoals={teamGoals}
-                    onInviteClick={handleInviteClick}
-                />
+                <div className="space-y-6">
+                    <CoachDashboard
+                        players={players}
+                        drills={drills}
+                        sessions={sessions}
+                        teamGoals={teamGoals}
+                        onInviteClick={handleInviteClick}
+                    />
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <TeamPitchingOverview stats={teamPitchingStats} />
+                        <RecentTeamPitchingSessions sessions={teamPitchingSessions} players={players} />
+                    </div>
+                </div>
             )}
             {currentView === 'players' && (
                  selectedPlayer ? (
@@ -2471,6 +2685,7 @@ export const CoachView: React.FC = () => {
                         players={players} 
                         sessionsByPlayer={sessionsByPlayer} 
                         onPlayerClick={handlePlayerClick}
+                        onAssignGoal={handleOpenAssignGoal}
                         selectedGradYear={selectedGradYear}
                         setSelectedGradYear={setSelectedGradYear}
                     />
@@ -2557,5 +2772,142 @@ export const CoachView: React.FC = () => {
                 <DrillForm onSave={handleCreateDrill} onClose={() => setIsCreateDrillModalOpen(false)} />
             </Modal>
         </Dashboard>
+        {goalModalPlayerId && activeTeam && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm px-4">
+                <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+                    <div>
+                        <h2 className="text-xl font-semibold text-foreground">Assign Personal Goal</h2>
+                        <p className="text-sm text-muted-foreground">
+                            {goalModalPlayer ? `Goal for ${goalModalPlayer.name}` : 'Select a player to assign a goal.'}
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Metric</label>
+                        <select
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={goalMetric}
+                            onChange={(event) => setGoalMetric(event.target.value as GoalType)}
+                            disabled={goalSaving}
+                        >
+                            {GOAL_TYPES.map((metric) => (
+                                <option key={metric} value={metric}>
+                                    {metric}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Target Value</label>
+                        <input
+                            type="number"
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={goalTargetValue}
+                            onChange={(event) => setGoalTargetValue(Number(event.target.value))}
+                            disabled={goalSaving}
+                        />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Start Date</label>
+                            <input
+                                type="date"
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={goalStartDate}
+                                onChange={(event) => setGoalStartDate(event.target.value)}
+                                disabled={goalSaving}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Target Date</label>
+                            <input
+                                type="date"
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={goalTargetDate}
+                                onChange={(event) => setGoalTargetDate(event.target.value)}
+                                disabled={goalSaving}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Status</label>
+                        <select
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={goalStatus}
+                            onChange={(event) => setGoalStatus(event.target.value as 'Active' | 'Completed' | 'Archived')}
+                            disabled={goalSaving}
+                        >
+                            <option value="Active">Active</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Archived">Archived</option>
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Drill Emphasis (Optional)</label>
+                        <select
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={goalDrillType ?? ''}
+                            onChange={(event) => {
+                                const { value } = event.target;
+                                setGoalDrillType(value ? (value as DrillType) : undefined);
+                            }}
+                            disabled={goalSaving}
+                        >
+                            <option value="">No specific drill</option>
+                            {DRILL_TYPES.map((type) => (
+                                <option key={type} value={type}>
+                                    {type}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    {goalError && <p className="text-sm text-destructive">{goalError}</p>}
+                    <div className="flex items-center justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            className="text-sm text-muted-foreground hover:text-foreground"
+                            onClick={handleCloseGoalModal}
+                            disabled={goalSaving}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="inline-flex items-center rounded-md bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-60"
+                            onClick={handleSaveCoachGoal}
+                            disabled={goalSaving}
+                        >
+                            {goalSaving ? 'Saving…' : 'Save Goal'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        {selectedSession && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                <div className="bg-card border border-border rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                    <SessionDetail
+                        session={selectedSession}
+                        isCoach={true}
+                        onClose={() => {
+                            if (savingFeedback) return;
+                            setSelectedSession(null);
+                        }}
+                        onSaveCoachFeedback={async (feedback) => {
+                            if (!selectedSession) return;
+                            const sessionId = selectedSession.id;
+                            try {
+                                setSavingFeedback(true);
+                                await setCoachFeedbackOnSession(sessionId, feedback);
+                                setSelectedSession((prev) => (prev && prev.id === sessionId ? { ...prev, coachFeedback: feedback } : prev));
+                            } finally {
+                                setSavingFeedback(false);
+                            }
+                        }}
+                        isSavingCoachFeedback={savingFeedback}
+                    />
+                </div>
+            </div>
+        )}
+        </>
     );
 };

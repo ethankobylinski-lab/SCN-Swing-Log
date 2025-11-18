@@ -31,6 +31,8 @@ export interface Team {
   primaryColor?: string;
   joinCodePlayer?: string;
   joinCodeCoach?: string;
+  createdAt?: string;
+  createdBy?: string;
 }
 
 // Added JoinCode interface to manage team invitations
@@ -99,6 +101,8 @@ export interface SetResult {
   targetZones?: TargetZone[];
 }
 
+export type SessionType = 'hitting' | 'pitching';
+
 export interface Session {
   id: string;
   playerId: string;
@@ -106,9 +110,11 @@ export interface Session {
   name: string; // Used for drill name or ad-hoc session type
   teamId: string;
   date: string; // ISO string
+  type?: SessionType;
   sets: SetResult[];
   feedback?: string;
   reflection?: string;
+  coachFeedback?: string;
   createdAt?: string; // ISO timestamp of when the log was recorded
   updatedAt?: string; // ISO timestamp of the most recent edit
   lastEditedBy?: string;
@@ -141,6 +147,8 @@ export interface PersonalGoal {
   pitchTypes?: PitchType[];
   reflection?: string;
   minReps?: number;
+  createdByUserId?: string;
+  createdByRole?: UserRole;
 }
 
 export interface TeamGoal {

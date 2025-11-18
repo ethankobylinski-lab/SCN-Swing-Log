@@ -2,6 +2,7 @@ import React, { useContext, useState } from 'react';
 import { DataContext } from '../contexts/DataContext';
 import { LogoutIcon } from './icons/LogoutIcon';
 import { Team } from '../types';
+import { RecordSessionModal } from './RecordSessionModal';
 
 interface SidebarNavProps {
   navItems: { name: string; icon: React.ReactNode; view: string }[];
@@ -87,6 +88,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const { currentUser, logout } = useContext(DataContext)!;
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
 
   const SideContent = () => (
     <>
@@ -119,6 +121,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   );
 
   return (
+    <>
     <div className="relative min-h-screen">
       {/* Mobile sidebar */}
       <div className={`fixed inset-0 flex z-40 md:hidden ${sidebarOpen ? '' : 'hidden'}`}>
@@ -177,5 +180,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </main>
       </div>
     </div>
+    {currentUser && (
+      <>
+        <button
+          type="button"
+          onClick={() => setIsRecordModalOpen(true)}
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 rounded-full px-6 py-3 bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/60"
+        >
+          Record Session
+        </button>
+        {isRecordModalOpen && <RecordSessionModal onClose={() => setIsRecordModalOpen(false)} />}
+      </>
+    )}
+    </>
   );
 };
