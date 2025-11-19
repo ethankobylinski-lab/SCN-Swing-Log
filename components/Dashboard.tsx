@@ -1,7 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { DataContext } from '../contexts/DataContext';
 import { LogoutIcon } from './icons/LogoutIcon';
-import { Team } from '../types';
+import { Team, UserRole } from '../types';
 import { RecordSessionModal } from './RecordSessionModal';
 
 interface SidebarNavProps {
@@ -180,7 +180,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </main>
       </div>
     </div>
-    {currentUser && (
+    {currentUser?.role === UserRole.Player && (
       <>
         <button
           type="button"

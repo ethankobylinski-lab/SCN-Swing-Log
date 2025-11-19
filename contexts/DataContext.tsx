@@ -1,12 +1,16 @@
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import type { Session as SupabaseSession } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
-import { User, UserRole, Team, Player, Drill, Session, DrillAssignment, DayOfWeek, PersonalGoal, PlayerProfile, TeamGoal, UserPreferences, SessionType } from '../types';
+import {
+    User, UserRole, Team, Player, Drill, Session, DrillAssignment, DayOfWeek,
+    PersonalGoal, PlayerProfile, TeamGoal, UserPreferences, SessionType,
+    MembershipRole, TeamMember, SessionFeedback,
+    GoalType, DrillType, TargetZone, PitchType, SetResult
+} from '../types';
 import { generateTeamCode } from '../utils/helpers';
-import { resolveTeamFromJoinCode } from '../utils/membership';
 import { MOCK_COACH, MOCK_PLAYERS, MOCK_TEAM, MOCK_DRILLS, MOCK_SESSIONS, MOCK_ASSIGNMENTS, MOCK_GOALS, MOCK_TEAM_GOALS } from '../utils/mockData';
 
-type SessionUpdatePayload = Partial<Pick<Session, 'name' | 'drillId' | 'sets' | 'feedback' | 'reflection'>>;
+type SessionUpdatePayload = Partial<Pick<Session, 'name' | 'drillId' | 'sets' | 'feedback' | 'reflection' | 'coachFeedback'>>;
 type LogSessionPayload = Omit<Session, 'id' | 'playerId' | 'teamId'> & {
     teamId?: string;
     playerId?: string;
@@ -27,65 +31,73 @@ export type PitchingStatsSummary = {
 
 // Context interface
 interface IDataContext {
-  currentUser: User | null;
-  loading: boolean;
-  databaseStatus: 'connecting' | 'ready' | 'error';
-  databaseError?: string | null;
-  teamAccessErrors: Record<string, string>;
-  emailSignUp: (email: string, password: string) => Promise<void>;
-  emailSignIn: (email: string, password: string) => Promise<void>;
-  createUserProfile: (profileData: { name: string; role: UserRole; playerProfile?: PlayerProfile }) => Promise<void>;
-  completeOnboarding: () => Promise<void>;
-  logout: () => void;
-  // --- Data Access ---
-  getTeamsForCoach: (coachId: string) => Team[];
-  getPlayersInTeam: (teamId: string) => Player[];
-  getDrillsForTeam: (teamId: string) => Drill[];
-  getSessionsForTeam: (teamId: string) => Session[];
-  getSessionsForPlayer: (playerId: string) => Session[];
-  getAssignedDrillsForPlayerToday: (playerId: string, teamId: string) => Drill[];
-  createDrill: (drillData: Omit<Drill, 'id' | 'teamId'>, teamId: string) => Promise<void>;
-  createAssignment: (assignmentData: Omit<DrillAssignment, 'id' | 'assignedDate'>) => Promise<void>;
-  logSession: (sessionData: LogSessionPayload) => Promise<Session | undefined>;
-  updateSession: (sessionId: string, updates: SessionUpdatePayload) => Promise<Session | undefined>;
-  createTeam: (
-    teamData: Omit<Team, 'id' | 'coachId'>
-  ) => Promise<{ teamId: string; playerCode: string; coachCode: string } | undefined>;
-  getJoinCodeForTeam: (teamId: string) => Promise<string | null>;
-  getJoinCodesForTeam: (teamId: string) => Promise<{ playerCode: string; coachCode: string } | null>;
-  updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
-  joinTeamAsPlayer: (joinCode: string) => Promise<Team>;
-  joinTeamAsCoach: (joinCode: string) => Promise<Team>;
-  leaveTeam: (teamId: string) => Promise<void>;
-  getGoalsForPlayer: (playerId: string) => PersonalGoal[];
-  createGoal: (goalData: Omit<PersonalGoal, 'id'>) => Promise<void>;
-  createPersonalGoalForPlayerAsCoach: (
-    playerId: string,
-    teamId: string,
-    payload: Omit<PersonalGoal, 'id' | 'playerId' | 'teamId' | 'createdByUserId' | 'createdByRole'>,
-  ) => Promise<void>;
-  deleteGoal: (goalId: string) => Promise<void>;
-  updateGoal: (goalId: string, updates: Partial<Omit<PersonalGoal, 'id' | 'playerId' | 'teamId'>>) => Promise<void>;
-  getTeamGoals: (teamId: string) => TeamGoal[];
-  getTeamsForPlayer: (playerId: string) => Team[];
-  getCoachesForTeam: (teamId: string) => User[];
-  createTeamGoal: (goalData: Omit<TeamGoal, 'id'>) => Promise<void>;
-  deleteTeamGoal: (goalId: string) => Promise<void>;
-  removeCoachFromTeam: (coachId: string, teamId: string) => Promise<void>;
-  setCoachFeedbackOnSession: (sessionId: string, coachFeedback: string) => Promise<void>;
-  recordSessionIntent?: { type: SessionType; id: number };
-  setRecordSessionIntent: (intent?: { type: SessionType; id: number }) => void;
-  getPitchingSessionsForPlayer: (playerId: string, teamId?: string) => Session[];
-  getPitchingSessionsForTeam: (teamId: string) => Session[];
-  getPitchingStatsForSessions: (sessions: Session[]) => PitchingStatsSummary;
-  // --- State Management ---
-  activeTeam: Team | undefined;
-  activeTeamId?: string;
-  setActiveTeamId: (teamId: string | undefined) => void;
-  currentUserRole: UserRole | null;
-  playerTeamIds: string[];
-  coachTeamIds: string[];
-  setDevUser?: (role: UserRole) => void;
+    currentUser: User | null;
+    loading: boolean;
+    databaseStatus: 'connecting' | 'ready' | 'error';
+    databaseError?: string | null;
+    teamAccessErrors: Record<string, string>;
+    emailSignUp: (email: string, password: string) => Promise<void>;
+    emailSignIn: (email: string, password: string) => Promise<void>;
+    createUserProfile: (profileData: { name: string; role: UserRole; playerProfile?: PlayerProfile }) => Promise<void>;
+    completeOnboarding: () => Promise<void>;
+    logout: () => void;
+    // --- Data Access ---
+    getTeamsForCoach: (coachId: string) => Team[];
+    getPlayersInTeam: (teamId: string) => Player[];
+    getDrillsForTeam: (teamId: string) => Drill[];
+    getSessionsForTeam: (teamId: string) => Session[];
+    getSessionsForPlayer: (playerId: string) => Session[];
+    getAssignedDrillsForPlayerToday: (playerId: string, teamId: string) => Drill[];
+    createDrill: (drillData: Omit<Drill, 'id' | 'teamId'>, teamId: string) => Promise<void>;
+    createAssignment: (assignmentData: Omit<DrillAssignment, 'id' | 'assignedDate'>) => Promise<void>;
+    logSession: (sessionData: LogSessionPayload) => Promise<Session | undefined>;
+    updateSession: (sessionId: string, updates: SessionUpdatePayload) => Promise<Session | undefined>;
+    createTeam: (
+        teamData: Omit<Team, 'id' | 'coachId'>
+    ) => Promise<{ teamId: string; playerCode: string; coachCode: string } | undefined>;
+    getJoinCodeForTeam: (teamId: string) => Promise<string | null>;
+    getJoinCodesForTeam: (teamId: string) => Promise<{ playerCode: string; coachCode: string } | null>;
+    updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
+    updateProfile: (updates: { name?: string; phoneNumber?: string | null }) => Promise<void>;
+    updateTeamDetails: (teamId: string, updates: { name?: string; primaryColor?: string | null }) => Promise<void>;
+    joinTeamAsPlayer: (joinCode: string) => Promise<Team>;
+    joinTeamAsCoach: (joinCode: string) => Promise<Team>;
+    leaveTeam: (teamId: string) => Promise<void>;
+    getGoalsForPlayer: (playerId: string) => PersonalGoal[];
+    createGoal: (goalData: Omit<PersonalGoal, 'id'>) => Promise<void>;
+    createPersonalGoalForPlayerAsCoach: (
+        playerId: string,
+        teamId: string,
+        payload: Omit<PersonalGoal, 'id' | 'playerId' | 'teamId' | 'createdByUserId' | 'createdByRole'>,
+    ) => Promise<void>;
+    deleteGoal: (goalId: string) => Promise<void>;
+    updateGoal: (goalId: string, updates: Partial<Omit<PersonalGoal, 'id' | 'playerId' | 'teamId'>>) => Promise<void>;
+    getTeamGoals: (teamId: string) => TeamGoal[];
+    getTeamsForPlayer: (playerId: string) => Team[];
+    getCoachesForTeam: (teamId: string) => User[];
+    createTeamGoal: (goalData: Omit<TeamGoal, 'id'>) => Promise<void>;
+    deleteTeamGoal: (goalId: string) => Promise<void>;
+    removeCoachFromTeam: (coachId: string, teamId: string) => Promise<void>;
+    setCoachFeedbackOnSession: (sessionId: string, coachFeedback: string) => Promise<void>;
+    // New schema features
+    isHeadCoach: (teamId: string) => boolean;
+    getTeamMembers: (teamId: string) => TeamMember[];
+    addSessionFeedback: (sessionId: string, teamId: string, feedback: { reaction?: string; note?: string }) => Promise<void>;
+    getSessionFeedback: (sessionId: string) => SessionFeedback[];
+    promoteOrDemoteCoach: (teamId: string, targetUserId: string, newRole: 'HeadCoach' | 'AssistantCoach') => Promise<void>;
+    recordSessionIntent?: { type: SessionType; id: number };
+    setRecordSessionIntent: (intent?: { type: SessionType; id: number }) => void;
+    getPitchingSessionsForPlayer: (playerId: string, teamId?: string) => Session[];
+    getPitchingSessionsForTeam: (teamId: string) => Session[];
+    getPitchingStatsForSessions: (sessions: Session[]) => PitchingStatsSummary;
+    // --- State Management ---
+    activeTeam: Team | undefined;
+    activeTeamId?: string;
+    setActiveTeamId: (teamId: string | undefined) => void;
+    currentUserRole: UserRole | null;
+    playerTeamIds: string[];
+    coachTeamIds: string[];
+    setDevUser?: (role: UserRole) => void;
 }
 
 // CHANGELOG: Players own their sessions and coaches see consistent team-scoped views; auth-driven role data now drives every subscription.
@@ -142,6 +154,8 @@ const ensurePlayerProfile = (rawProfile: unknown): PlayerProfile => {
     };
 };
 
+const DEFAULT_TEAM_COLOR = '#000000';
+
 type SupabaseUserRow = {
     id: string;
     name?: string | null;
@@ -155,6 +169,7 @@ type SupabaseUserRow = {
     is_new?: boolean | null;
 };
 
+// Maps a row from public.users into our User shape (auth profile + membership arrays).
 const mapUserDocument = (row: SupabaseUserRow): User => {
     const role = normalizeUserRole(row.role);
     const teamIds = coerceStringArray(row.team_ids);
@@ -187,15 +202,25 @@ type SupabaseTeamRow = {
     name: string;
     season_year: number;
     coach_id: string;
+    primary_color?: string | null;
     created_at?: string | null;
+    updated_at?: string | null;
     created_by?: string | null;
 };
 
+type JoinTeamRpcRow = SupabaseTeamRow & {
+    player_team_ids?: string[] | null;
+    coach_team_ids?: string[] | null;
+    membership_role?: string | null; // 'Player' | 'HeadCoach' | 'AssistantCoach'
+};
+
+// Maps a row from public.teams into the Team model used client-side.
 const mapTeamRow = (row: SupabaseTeamRow): Team => ({
     id: row.id,
     name: row.name,
     seasonYear: row.season_year,
     coachId: row.coach_id,
+    primaryColor: row.primary_color ?? undefined,
     createdAt: row.created_at ?? undefined,
     createdBy: row.created_by ?? undefined,
 });
@@ -218,21 +243,22 @@ type SupabaseDrillRow = {
     drill_type?: string | null;
 };
 
+// Maps a row from public.drills; jsonb columns come through as JS arrays already.
 const mapDrillRow = (row: SupabaseDrillRow): Drill => ({
     id: row.id,
     teamId: row.team_id,
     name: row.name,
     description: row.description,
-    targetZones: row.target_zones,
-    pitchTypes: row.pitch_types,
+    targetZones: row.target_zones as TargetZone[],
+    pitchTypes: row.pitch_types as PitchType[],
     countSituation: row.count_situation as Drill['countSituation'],
     baseRunners: row.base_runners as Drill['baseRunners'],
     outs: row.outs as Drill['outs'],
-    goalType: row.goal_type as Drill['goalType'],
+    goalType: row.goal_type as GoalType,
     goalTargetValue: row.goal_target_value,
     repsPerSet: row.reps_per_set,
     sets: row.sets,
-    drillType: row.drill_type ?? undefined,
+    drillType: row.drill_type as DrillType | undefined,
 });
 
 type SupabaseAssignmentRow = {
@@ -247,6 +273,7 @@ type SupabaseAssignmentRow = {
     coach_id?: string | null;
 };
 
+// Maps a row from public.assignments (player_ids jsonb array → string[] etc.).
 const mapAssignmentRow = (row: SupabaseAssignmentRow): DrillAssignment => ({
     id: row.id,
     teamId: row.team_id,
@@ -276,6 +303,7 @@ type SupabasePersonalGoalRow = {
     created_by_role?: UserRole | null;
 };
 
+// Maps a row from public.personal_goals (jsonb targets → arrays, nullable columns → undefined).
 const mapPersonalGoalRow = (row: SupabasePersonalGoalRow): PersonalGoal => ({
     id: row.id,
     playerId: row.player_id,
@@ -286,8 +314,8 @@ const mapPersonalGoalRow = (row: SupabasePersonalGoalRow): PersonalGoal => ({
     targetDate: row.target_date,
     status: row.status,
     drillType: row.drill_type ?? undefined,
-    targetZones: row.target_zones ?? [],
-    pitchTypes: row.pitch_types ?? [],
+    targetZones: (row.target_zones ?? []) as TargetZone[],
+    pitchTypes: (row.pitch_types ?? []) as PitchType[],
     reflection: row.reflection ?? undefined,
     minReps: row.min_reps ?? undefined,
     createdByUserId: row.created_by_user_id ?? undefined,
@@ -309,6 +337,7 @@ type SupabaseTeamGoalRow = {
     created_by?: string | null;
 };
 
+// Maps a row from public.team_goals.
 const mapTeamGoalRow = (row: SupabaseTeamGoalRow): TeamGoal => ({
     id: row.id,
     teamId: row.team_id,
@@ -319,8 +348,8 @@ const mapTeamGoalRow = (row: SupabaseTeamGoalRow): TeamGoal => ({
     targetDate: row.target_date,
     status: row.status,
     drillType: row.drill_type ?? undefined,
-    targetZones: row.target_zones ?? [],
-    pitchTypes: row.pitch_types ?? [],
+    targetZones: (row.target_zones ?? []) as TargetZone[],
+    pitchTypes: (row.pitch_types ?? []) as PitchType[],
 });
 
 const mapPlayerSnapshot = (row: SupabaseUserRow): Player | null => {
@@ -340,6 +369,50 @@ const mapPlayerSnapshot = (row: SupabaseUserRow): Player | null => {
     };
 };
 
+type SupabaseTeamMemberRow = {
+    id: string;
+    team_id: string;
+    user_id: string;
+    role: string;
+    status: string;
+    added_by?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+
+const mapTeamMemberRow = (row: SupabaseTeamMemberRow): TeamMember => ({
+    id: row.id,
+    teamId: row.team_id,
+    userId: row.user_id,
+    role: row.role as MembershipRole,
+    status: row.status as TeamMember['status'],
+    addedBy: row.added_by ?? undefined,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+});
+
+type SupabaseSessionFeedbackRow = {
+    id: string;
+    session_id: string;
+    team_id: string;
+    coach_id: string;
+    reaction?: string | null;
+    note?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+
+const mapSessionFeedbackRow = (row: SupabaseSessionFeedbackRow): SessionFeedback => ({
+    id: row.id,
+    sessionId: row.session_id,
+    teamId: row.team_id,
+    coachId: row.coach_id,
+    reaction: row.reaction ?? undefined,
+    note: row.note ?? undefined,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+});
+
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -356,6 +429,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [goals, setGoals] = useState<PersonalGoal[]>([]);
     const [teamGoals, setTeamGoals] = useState<TeamGoal[]>([]);
     const [teamCoachesById, setTeamCoachesById] = useState<Record<string, User[]>>({});
+    const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+    const [sessionFeedback, setSessionFeedback] = useState<SessionFeedback[]>([]);
     const [isSimulatedUser, setIsSimulatedUser] = useState(false);
     const [recordSessionIntent, setRecordSessionIntent] = useState<{ type: SessionType; id: number } | undefined>(undefined);
     const [teamAccessErrors, setTeamAccessErrors] = useState<Record<string, string>>({});
@@ -383,6 +458,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setTeamAccessErrors((prev) => ({ ...prev, [teamId]: contextLabel }));
     }, []);
 
+    /**
+     * Mirror of the Postgres helpers coach_can_manage_team()/is_head_coach().
+     * If the logic for team membership changes (new tables, different semantics for coach_team_ids),
+     * update BOTH this check and the SQL helper functions so client-side gating stays aligned with RLS.
+     */
     const ensureCoachAccess = (teamId: string) => {
         if (!currentUser) {
             throw new Error('You need to be signed in to manage team data.');
@@ -618,6 +698,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         last_edited_by?: string | null;
     };
 
+    // Maps a row from public.sessions (sets jsonb -> array, timestamp columns normalized to ISO).
     const mapSessionDocument = (row: SupabaseSessionRow): Session | null => {
         if (!row?.id || !row.player_id || !row.team_id || !row.date || !row.name) {
             return null;
@@ -951,23 +1032,47 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadCoaches = async () => {
             const loaders = coachTeamIds.map(async (teamId) => {
-                const { data, error } = await supabase
+                // Query team_members for coaches (HeadCoach or AssistantCoach)
+                const { data: memberData, error: memberError } = await supabase
+                    .from<SupabaseTeamMemberRow>('team_members')
+                    .select('user_id')
+                    .eq('team_id', teamId)
+                    .in('role', ['HeadCoach', 'AssistantCoach'])
+                    .eq('status', 'active');
+
+                if (!isMounted || memberError || !memberData || memberData.length === 0) {
+                    if (memberError) {
+                        console.error(`Failed to load coach memberships for team ${teamId}:`, memberError);
+                    }
+                    return;
+                }
+
+                const coachUserIds = memberData.map(m => m.user_id);
+
+                // Fetch user details for these coaches
+                const { data: userData, error: userError } = await supabase
                     .from<SupabaseUserRow>('users')
                     .select('*')
-                    .eq('role', UserRole.Coach)
-                    .contains('coach_team_ids', [teamId]);
+                    .in('id', coachUserIds);
 
                 if (!isMounted) {
                     return;
                 }
 
-                if (error) {
-                    console.error(`Failed to load coaches for team ${teamId}:`, error);
+                if (userError) {
+                    console.error(`Failed to load coach users for team ${teamId}:`, userError);
                     return;
                 }
 
-                const coaches = (data ?? []).map(mapUserDocument).filter((user) => user.role === UserRole.Coach);
-                setTeamCoachesById((prev) => ({ ...prev, [teamId]: coaches }));
+                const coaches = (userData ?? []).map(mapUserDocument).filter((user) => user.role === UserRole.Coach);
+                if (coaches.length > 0) {
+                    setTeamCoachesById((prev) => {
+                        const updated = { ...prev };
+                        const key = teamId as string;
+                        updated[key] = coaches;
+                        return updated;
+                    });
+                }
             });
 
             await Promise.all(loaders);
@@ -1194,59 +1299,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         });
     };
 
-    const persistJoinCodeRecord = async (code: string, teamId: string, role: 'player' | 'coach') => {
-        const normalized = code.trim().toUpperCase();
-        if (!normalized) return;
-        try {
-            await supabase
-                .from('join_codes')
-                .upsert(
-                    {
-                        code: normalized,
-                        team_id: teamId,
-                        role,
-                        created_by: currentUser?.id ?? null,
-                        updated_at: new Date().toISOString(),
-                    },
-                    { onConflict: 'code' },
-                );
-        } catch (error) {
-            console.warn(`Unable to persist join code ${normalized} for team ${teamId}:`, error);
-        }
-    };
-
-    const syncJoinCodeRecords = async (teamId: string, playerCode?: string, coachCode?: string) => {
-        const ops: Promise<void>[] = [];
-        if (playerCode) {
-            ops.push(persistJoinCodeRecord(playerCode, teamId, 'player'));
-        }
-        if (coachCode) {
-            ops.push(persistJoinCodeRecord(coachCode, teamId, 'coach'));
-        }
-        if (ops.length > 0) {
-            await Promise.all(ops);
-        }
-    };
-
-    const loadTeamDocument = async (teamId: string): Promise<Team | null> => {
-        try {
-            const { data, error } = await supabase
-                .from<SupabaseTeamRow>('teams')
-                .select('*')
-                .eq('id', teamId)
-                .single();
-            if (error || !data) {
-                return null;
-            }
-            const teamData = mapTeamRow(data);
-            upsertTeamCache(teamData);
-            return teamData;
-        } catch (error) {
-            console.error(`Failed to load team ${teamId}:`, error);
-            return null;
-        }
-    };
-
+    // Reads the persistent join codes for a team from public.join_codes. DB trigger creates them.
     const fetchJoinCodePair = async (
         teamId: string,
     ): Promise<{ playerCode: string | null; coachCode: string | null }> => {
@@ -1267,62 +1320,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
         });
         return { playerCode, coachCode };
-    };
-
-    const generateUniqueJoinCode = (existing: Set<string>) => {
-        let next = generateTeamCode();
-        while (existing.has(next)) {
-            next = generateTeamCode();
-        }
-        return next;
-    };
-
-    const ensureTeamJoinCodes = async (teamId: string): Promise<{ playerCode: string; coachCode: string } | null> => {
-        if (!currentUser) {
-            throw new Error("Sign in to manage team join codes.");
-        }
-        if (currentUser.role !== UserRole.Coach) {
-            throw new Error("Only coaches can manage team join codes.");
-        }
-
-        ensureCoachAccess(teamId);
-        let team = teams.find((t) => t.id === teamId);
-        if (!team) {
-            team = await loadTeamDocument(teamId);
-            if (!team) {
-                return null;
-            }
-        }
-
-        try {
-            const existing = await fetchJoinCodePair(teamId);
-            let { playerCode, coachCode } = existing;
-            const existingCodes = new Set(
-                [playerCode, coachCode].filter((value): value is string => Boolean(value)),
-            );
-            const pending: Promise<void>[] = [];
-
-            if (!playerCode) {
-                playerCode = generateUniqueJoinCode(existingCodes);
-                existingCodes.add(playerCode);
-                pending.push(persistJoinCodeRecord(playerCode, teamId, 'player'));
-            }
-            if (!coachCode) {
-                coachCode = generateUniqueJoinCode(existingCodes);
-                pending.push(persistJoinCodeRecord(coachCode, teamId, 'coach'));
-            }
-
-            if (pending.length > 0) {
-                await Promise.all(pending);
-            }
-
-            return playerCode && coachCode ? { playerCode, coachCode } : null;
-        } catch (error) {
-            console.error('Unable to load join codes for team', teamId, error);
-            throw error instanceof Error
-                ? error
-                : new Error('Unable to load team invite codes at this time.');
-        }
     };
 
     const updatePreferences = async (prefs: Partial<UserPreferences>) => {
@@ -1349,6 +1346,62 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setCurrentUser((prev) => (prev ? { ...prev, preferences: basePrefs } : prev));
     };
 
+    const updateProfile = async (updates: { name?: string; phoneNumber?: string | null }) => {
+        if (!currentUser) {
+            throw new Error('Sign in to update your profile.');
+        }
+
+        const payload: Record<string, unknown> = {};
+        if (typeof updates.name === 'string') {
+            const trimmed = updates.name.trim();
+            if (!trimmed) {
+                throw new Error('Your name cannot be empty.');
+            }
+            payload.name = trimmed;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(updates, 'phoneNumber')) {
+            const raw = updates.phoneNumber;
+            payload.phone_number = typeof raw === 'string' ? raw : raw ?? null;
+        }
+
+        if (Object.keys(payload).length === 0) {
+            return;
+        }
+
+        if (isDemoMode) {
+            setCurrentUser((prev) => {
+                if (!prev) {
+                    return prev;
+                }
+                const next: User = { ...prev };
+                if (typeof payload.name === 'string') {
+                    next.name = payload.name;
+                }
+                if (Object.prototype.hasOwnProperty.call(payload, 'phone_number')) {
+                    const phoneValue = payload.phone_number as string | null;
+                    next.phoneNumber = phoneValue ?? undefined;
+                }
+                return next;
+            });
+            return;
+        }
+
+        const { data, error } = await supabase
+            .from<SupabaseUserRow>('users')
+            .update(payload)
+            .eq('id', currentUser.id)
+            .select('*')
+            .single();
+
+        if (error) {
+            console.error('Error updating profile: ', error);
+            throw new Error(error.message);
+        }
+
+        setCurrentUser(mapUserDocument(data));
+    };
+
     // joinTeam ensures the resolved team is added once, cached locally, and becomes active if no team is selected yet.
     const joinTeam = async (joinCode: string, role: 'player' | 'coach'): Promise<Team> => {
         if (!currentUser) {
@@ -1366,28 +1419,37 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             throw new Error("Enter a valid team code.");
         }
 
-        const membershipField = role === 'player' ? 'teamIds' : 'coachTeamIds';
-        const dbField = role === 'player' ? 'team_ids' : 'coach_team_ids';
-        const existingIds = currentUser[membershipField] ?? [];
 
-        const team = await resolveTeamFromJoinCode(normalizedCode, role);
-        if (existingIds.includes(team.id)) {
-            throw new Error("You're already a member of this team.");
-        }
-
-        const updatedIds = Array.from(new Set([...(existingIds ?? []), team.id]));
-        const { error } = await supabase
-            .from('users')
-            .update({ [dbField]: updatedIds })
-            .eq('id', currentUser.id);
-        if (error) {
+        const { data, error } = await supabase
+            .rpc('join_team_with_code', {
+                join_code: normalizedCode,
+                join_as: role,  // Fixed: was 'join_role', schema expects 'join_as'
+            })
+            .single();
+        if (error || !data) {
             console.error('Unable to join team:', error);
-            throw new Error(error.message);
+            throw new Error(error?.message ?? 'Unable to join this team.');
         }
+
+        // Cast the RPC response to the expected type
+        const rpcResponse = data as unknown as JoinTeamRpcRow;
+        const team = mapTeamRow(rpcResponse);
+        const updatedPlayerTeams = coerceStringArray(rpcResponse.player_team_ids);
+        const updatedCoachTeams = coerceStringArray(rpcResponse.coach_team_ids);
         setCurrentUser((prev) => {
-            if (!prev) return prev;
-            const updatedIds = Array.from(new Set([...(prev[membershipField] ?? []), team.id]));
-            return { ...prev, [membershipField]: updatedIds };
+            if (!prev) {
+                return prev;
+            }
+            return {
+                ...prev,
+                teamIds: updatedPlayerTeams,
+                coachTeamIds:
+                    updatedCoachTeams.length > 0
+                        ? [...updatedCoachTeams]
+                        : prev.coachTeamIds
+                            ? [...prev.coachTeamIds]
+                            : undefined,
+            };
         });
 
         upsertTeamCache(team);
@@ -1416,21 +1478,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const shouldClearDefaultTeam = currentUser.preferences?.defaultTeamId === teamId;
         const preferenceUpdate = shouldClearDefaultTeam
             ? (() => {
-                  const cleaned = { ...(currentUser.preferences ?? {}) };
-                  delete cleaned.defaultTeamId;
-                  return cleaned;
-              })()
+                const cleaned = { ...(currentUser.preferences ?? {}) };
+                delete cleaned.defaultTeamId;
+                return cleaned;
+            })()
             : currentUser.preferences;
 
-        const dbField = currentUser.role === UserRole.Coach ? 'coach_team_ids' : 'team_ids';
-        const updates: Record<string, unknown> = { [dbField]: existingIds.filter((id) => id !== teamId) };
-        if (shouldClearDefaultTeam) {
-            updates.preferences = preferenceUpdate ?? {};
-        }
-        const { error } = await supabase.from('users').update(updates).eq('id', currentUser.id);
+        const { error } = await supabase
+            .from('team_members')
+            .delete()
+            .eq('team_id', teamId)
+            .eq('user_id', currentUser.id);
         if (error) {
             console.error('Unable to leave team:', error);
             throw new Error(error.message);
+        }
+
+        if (shouldClearDefaultTeam) {
+            const { error: prefError } = await supabase
+                .from('users')
+                .update({ preferences: preferenceUpdate ?? {} })
+                .eq('id', currentUser.id);
+            if (prefError) {
+                console.warn('Unable to update preferences while leaving team', prefError);
+            }
         }
 
         setCurrentUser((prev) => {
@@ -1559,14 +1630,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const getAssignedDrillsForPlayerToday = (playerId: string, teamId: string): Drill[] => {
         const today = new Date();
         const dayOfWeek: DayOfWeek = today.toLocaleDateString('en-US', { weekday: 'short' }) as DayOfWeek;
-        
+
         const assignedDrillIds = assignments
             .filter(a => a.teamId === teamId && a.playerIds.includes(playerId) && a.isRecurring && a.recurringDays?.includes(dayOfWeek))
             .map(a => a.drillId);
 
         return drills.filter(d => assignedDrillIds.includes(d.id));
     };
-    
+
     const createDrill = async (drillData: Omit<Drill, 'id' | 'teamId'>, teamId: string) => {
         if (!currentUser) {
             throw new Error("You need to be signed in to create a drill.");
@@ -1617,7 +1688,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return [...withoutCurrent, created];
         });
     };
-    
+
     const createAssignment = async (assignmentData: Omit<DrillAssignment, 'id' | 'assignedDate'>) => {
         if (!currentUser) {
             throw new Error("You need to be signed in to assign drills.");
@@ -1671,7 +1742,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return [...withoutCurrent, created];
         });
     };
-    
+
     const logSession = async (sessionData: LogSessionPayload): Promise<Session | undefined> => {
         if (!currentUser) {
             throw new Error("You need to be signed in to log a session.");
@@ -1759,7 +1830,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         return persistedSession;
     };
-    
+
     const updateSession = async (sessionId: string, updates: SessionUpdatePayload): Promise<Session | undefined> => {
         if (!currentUser) {
             throw new Error("You need to be signed in to update a session.");
@@ -1835,22 +1906,38 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return persisted;
     };
 
+    /**
+     * Creates a team (letting the trigger mint join codes) and then fetches the generated codes.
+     * The frontend MUST NOT insert into public.join_codes directly; it only reads whatever the server created.
+     */
     const createTeam = async (
         teamData: Omit<Team, 'id' | 'coachId'>
     ): Promise<{ teamId: string; playerCode: string; coachCode: string } | undefined> => {
-        const playerJoinCode = generateTeamCode();
-        const coachJoinCode = generateTeamCode();
+        const normalizedColor =
+            typeof teamData.primaryColor === 'string' && teamData.primaryColor.trim()
+                ? teamData.primaryColor.trim()
+                : DEFAULT_TEAM_COLOR;
+        const trimmedName = teamData.name.trim();
+        if (!trimmedName) {
+            throw new Error('Team name cannot be empty.');
+        }
+        if (!Number.isFinite(teamData.seasonYear)) {
+            throw new Error('Enter a valid season year.');
+        }
+        const normalizedSeasonYear = Math.trunc(teamData.seasonYear);
 
         if (isDemoMode) {
             if (!currentUser || currentUser.role !== UserRole.Coach) {
                 throw new Error("Only coaches can create teams.");
             }
+            const playerJoinCode = generateTeamCode();
+            const coachJoinCode = generateTeamCode();
             const newTeam: Team = {
                 id: `team-${Date.now()}`,
                 coachId: currentUser.id,
-                ...teamData,
-                joinCodePlayer: playerJoinCode,
-                joinCodeCoach: coachJoinCode,
+                name: trimmedName,
+                seasonYear: normalizedSeasonYear,
+                primaryColor: normalizedColor,
             };
             setTeams((prev) => [...prev, newTeam]);
             setCurrentUser((prev) =>
@@ -1868,47 +1955,122 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             throw new Error("Only coaches can create teams.");
         }
 
-        const { data, error } = await supabase.rpc<SupabaseTeamRow>('create_team', {
-            team_name: teamData.name,
-            team_season_year: teamData.seasonYear,
-            team_primary_color: teamData.primaryColor ?? null,
-        });
+        // The RPC now returns a JSON object: { team: {...}, codes: { player: '...', coach: '...' } }
+        const { data, error } = await supabase
+            .rpc('create_team', {
+                team_name: trimmedName,
+                team_season_year: normalizedSeasonYear,
+                team_primary_color: normalizedColor,
+            })
+            .single();
 
         if (error || !data) {
             console.error('Error creating team: ', error);
             throw new Error(error?.message ?? 'Unable to create team.');
         }
 
-        const newTeam = { ...mapTeamRow(data), joinCodePlayer: playerJoinCode, joinCodeCoach: coachJoinCode };
+        // Parse the response
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const response = data as any;
+        const newTeamRow = response.team as SupabaseTeamRow;
+        const codes = response.codes as { player: string; coach: string };
+
+        if (!newTeamRow || !codes?.player || !codes?.coach) {
+            console.error('Invalid response from create_team RPC:', response);
+            throw new Error('Team created, but unable to retrieve details. Please refresh.');
+        }
+
+        const newTeam = mapTeamRow(newTeamRow);
         setTeams((prev) => [...prev, newTeam]);
         setActiveTeamId(newTeam.id);
 
         const updatedCoachTeams = Array.from(new Set([...(currentUser.coachTeamIds ?? []), newTeam.id]));
-        const { error: membershipError } = await supabase
-            .from('users')
-            .update({ coach_team_ids: updatedCoachTeams })
-            .eq('id', user.id);
-        if (membershipError) {
-            console.warn('Unable to update coach membership record for new team', newTeam.id, membershipError);
-        }
         setCurrentUser((prev) => (prev ? { ...prev, coachTeamIds: updatedCoachTeams } : prev));
-        try {
-            await syncJoinCodeRecords(newTeam.id, playerJoinCode, coachJoinCode);
-        } catch (syncError) {
-            console.warn('Unable to sync join code records for team', newTeam.id, syncError);
+
+        return { teamId: newTeam.id, playerCode: codes.player, coachCode: codes.coach };
+    };
+
+    const updateTeamDetails = async (
+        teamId: string,
+        updates: { name?: string; primaryColor?: string | null },
+    ): Promise<void> => {
+        if (!currentUser) {
+            throw new Error('Sign in to update a team.');
         }
 
-        return { teamId: newTeam.id, playerCode: playerJoinCode, coachCode: coachJoinCode };
+        ensureCoachAccess(teamId);
+
+        const trimmedName = typeof updates.name === 'string' ? updates.name.trim() : undefined;
+        const payload: Record<string, unknown> = {};
+
+        if (trimmedName !== undefined) {
+            if (!trimmedName) {
+                throw new Error('Team name cannot be empty.');
+            }
+            payload.name = trimmedName;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(updates, 'primaryColor')) {
+            const provided = updates.primaryColor;
+            if (typeof provided === 'string') {
+                payload.primary_color = provided.trim() || null;
+            } else {
+                payload.primary_color = null;
+            }
+        }
+
+        if (Object.keys(payload).length === 0) {
+            return;
+        }
+
+        if (isDemoMode) {
+            setTeams((prev) =>
+                prev.map((team) => {
+                    if (team.id !== teamId) {
+                        return team;
+                    }
+                    return {
+                        ...team,
+                        ...(trimmedName !== undefined ? { name: trimmedName } : {}),
+                        ...(Object.prototype.hasOwnProperty.call(updates, 'primaryColor')
+                            ? {
+                                primaryColor:
+                                    typeof updates.primaryColor === 'string' && updates.primaryColor.trim()
+                                        ? updates.primaryColor.trim()
+                                        : undefined,
+                            }
+                            : {}),
+                    };
+                }),
+            );
+            return;
+        }
+
+        const { data, error } = await supabase
+            .from<SupabaseTeamRow>('teams')
+            .update(payload)
+            .eq('id', teamId)
+            .select('*')
+            .single();
+
+        if (error) {
+            console.error('Error updating team details: ', error);
+            throw new Error(error.message);
+        }
+
+        const updatedTeam = mapTeamRow(data);
+        setTeams((prev) => prev.map((team) => (team.id === teamId ? { ...team, ...updatedTeam } : team)));
     };
-    
+
+    // Join codes originate from the DB trigger; we simply read them here.
     const getJoinCodesForTeam = async (teamId: string): Promise<{ playerCode: string; coachCode: string } | null> => {
         ensureCoachAccess(teamId);
-        const codes = await ensureTeamJoinCodes(teamId);
-        if (codes) {
-            return codes;
+        const codes = await fetchJoinCodePair(teamId);
+        if (!codes.playerCode || !codes.coachCode) {
+            console.warn('Team is missing join codes', teamId);
+            return null;
         }
-
-        return null;
+        return { playerCode: codes.playerCode, coachCode: codes.coachCode };
     };
 
     const getJoinCodeForTeam = async (teamId: string): Promise<string | null> => {
@@ -1917,7 +2079,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     const getGoalsForPlayer = (playerId: string) => goals.filter(g => g.playerId === playerId);
-    
+
     const createGoal = async (goalData: Omit<PersonalGoal, 'id'>) => {
         if (!currentUser) {
             throw new Error("You need to be signed in to create a goal.");
@@ -2046,7 +2208,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return [...withoutCurrent, created];
         });
     };
-    
+
     const deleteGoal = async (goalId: string) => {
         if (!currentUser) {
             throw new Error("You need to be signed in to delete a goal.");
@@ -2055,7 +2217,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (isDemoMode) {
             setGoals(prev => prev.filter(g => g.id !== goalId));
             const index = MOCK_GOALS.findIndex(g => g.id === goalId);
-            if(index > -1) MOCK_GOALS.splice(index, 1);
+            if (index > -1) MOCK_GOALS.splice(index, 1);
             return;
         }
 
@@ -2235,20 +2397,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         if (coachId === currentUser.id) {
             throw new Error("Head coaches can't remove themselves here.");
         }
-        const { data, error } = await supabase
-            .from<SupabaseUserRow>('users')
-            .select('coach_team_ids')
-            .eq('id', coachId)
-            .single();
+        const { error } = await supabase
+            .from('team_members')
+            .delete()
+            .eq('team_id', teamId)
+            .eq('user_id', coachId);
         if (error) {
-            console.error('Unable to load coach memberships:', error);
+            console.error('Unable to remove coach from team:', error);
             throw new Error(error.message);
-        }
-        const filtered = (data?.coach_team_ids ?? []).filter((id) => id !== teamId);
-        const { error: updateError } = await supabase.from('users').update({ coach_team_ids: filtered }).eq('id', coachId);
-        if (updateError) {
-            console.error('Unable to remove coach from team:', updateError);
-            throw new Error(updateError.message);
         }
         setTeamCoachesById((prev) => {
             const existing = prev[teamId] ?? [];
@@ -2281,6 +2437,96 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setPersonalSessions((prev) => prev.map((session) => (session.id === sessionId ? { ...session, coachFeedback } : session)));
     };
 
+    // New schema helper functions
+    const isHeadCoach = (teamId: string): boolean => {
+        if (!currentUser) return false;
+        const team = teams.find(t => t.id === teamId);
+        return team?.coachId === currentUser.id;
+    };
+
+    const getTeamMembers = (teamId: string): TeamMember[] => {
+        return teamMembers.filter(m => m.teamId === teamId && m.status === 'active');
+    };
+
+    const addSessionFeedback = async (sessionId: string, teamId: string, feedback: { reaction?: string; note?: string }) => {
+        if (!currentUser) {
+            throw new Error('Sign in to leave feedback.');
+        }
+        if (currentUser.role !== UserRole.Coach) {
+            throw new Error('Only coaches can leave session feedback.');
+        }
+
+        const { data, error } = await supabase
+            .from<SupabaseSessionFeedbackRow>('session_feedback')
+            .insert({
+                session_id: sessionId,
+                team_id: teamId,
+                coach_id: currentUser.id,
+                reaction: feedback.reaction ?? null,
+                note: feedback.note ?? null,
+            })
+            .select('*')
+            .single();
+
+        if (error) {
+            console.error('Unable to add session feedback:', error);
+            throw new Error(error.message);
+        }
+
+        const newFeedback = mapSessionFeedbackRow(data);
+        setSessionFeedback(prev => [...prev, newFeedback]);
+    };
+
+    const getSessionFeedback = (sessionId: string): SessionFeedback[] => {
+        return sessionFeedback.filter(f => f.sessionId === sessionId);
+    };
+
+    const promoteOrDemoteCoach = async (teamId: string, targetUserId: string, newRole: 'HeadCoach' | 'AssistantCoach') => {
+        if (!currentUser) {
+            throw new Error('Sign in to manage coaches.');
+        }
+
+        const { error } = await supabase.rpc('promote_or_demote_coach', {
+            team_id: teamId,
+            target_user: targetUserId,
+            new_role: newRole,
+        });
+
+        if (error) {
+            console.error('Unable to promote/demote coach:', error);
+            throw new Error(error.message);
+        }
+
+        // Refresh team members and teams data
+        // The RPC will update team_members and teams.coach_id
+        // We should reload the affected data
+        const { data: membersData } = await supabase
+            .from<SupabaseTeamMemberRow>('team_members')
+            .select('*')
+            .eq('team_id', teamId)
+            .eq('status', 'active');
+
+        if (membersData) {
+            const updatedMembers = membersData.map(mapTeamMemberRow);
+            setTeamMembers(prev => {
+                const others = prev.filter(m => m.teamId !== teamId);
+                return [...others, ...updatedMembers];
+            });
+        }
+
+        // Reload the team to get updated coach_id
+        const { data: teamData } = await supabase
+            .from<SupabaseTeamRow>('teams')
+            .select('*')
+            .eq('id', teamId)
+            .single();
+
+        if (teamData) {
+            const updatedTeam = mapTeamRow(teamData);
+            setTeams(prev => prev.map(t => t.id === teamId ? updatedTeam : t));
+        }
+    };
+
 
     const value = {
         currentUser,
@@ -2305,9 +2551,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         logSession,
         updateSession,
         createTeam,
+        updateTeamDetails,
         getJoinCodeForTeam,
         getJoinCodesForTeam,
         updatePreferences,
+        updateProfile,
         joinTeamAsPlayer,
         joinTeamAsCoach,
         leaveTeam,
@@ -2325,6 +2573,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deleteTeamGoal,
         removeCoachFromTeam,
         setCoachFeedbackOnSession,
+        // New schema features
+        isHeadCoach,
+        getTeamMembers,
+        addSessionFeedback,
+        getSessionFeedback,
+        promoteOrDemoteCoach,
         recordSessionIntent,
         setRecordSessionIntent,
         activeTeam,

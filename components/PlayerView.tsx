@@ -107,7 +107,7 @@ const GoalProgress: React.FC<{
             setIsDeleting(false);
         }
     };
-    
+
     let progress = 0;
     if (goal.targetValue > 0) {
         if (goal.metric === 'No Strikeouts') {
@@ -387,7 +387,7 @@ const GoalDetail: React.FC<GoalDetailProps> = ({
 
 const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: Drill[]; }> = ({ goal, sessions, drills }) => {
     const currentValue = getCurrentTeamMetricValue(goal, sessions, drills);
-    
+
     let progress = 0;
     if (goal.targetValue > 0) {
         if (goal.metric === 'No Strikeouts') {
@@ -430,7 +430,7 @@ const PlayerDashboard: React.FC<{
     onStartAssignedSession: (drill: Drill) => void;
     activeTeamId?: string;
 }> = ({ player, assignedDrills, recentSessions, drills, goals, teamGoals, teamSessions, onStartAssignedSession, activeTeamId }) => {
-    
+
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
     const { createGoal, deleteGoal, updateGoal } = useContext(DataContext)!;
     const teamId = activeTeamId;
@@ -450,7 +450,7 @@ const PlayerDashboard: React.FC<{
             setGoalReflection('');
         }
     }, [selectedGoal]);
-    
+
     const overallExecutionPct = useMemo(() => {
         const allSets = recentSessions.flatMap(s => s.sets);
         if (allSets.length === 0) return 0;
@@ -518,8 +518,8 @@ const PlayerDashboard: React.FC<{
             setGoalListError(message);
         }
     };
-    
-    const StatCard: React.FC<{title: string; value: string;}> = ({title, value}) => (
+
+    const StatCard: React.FC<{ title: string; value: string; }> = ({ title, value }) => (
         <div className="bg-card border border-border p-4 rounded-lg shadow-sm text-center">
             <h3 className="text-sm font-semibold text-muted-foreground">{title}</h3>
             <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
@@ -533,7 +533,7 @@ const PlayerDashboard: React.FC<{
                 <StatCard title="Overall Execution" value={`${overallExecutionPct}%`} />
                 <StatCard title="Active Goals" value={goals.length.toString()} />
             </div>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
                     <div>
@@ -560,7 +560,7 @@ const PlayerDashboard: React.FC<{
                             </div>
                         )}
                     </div>
-                     <div>
+                    <div>
                         <h2 className="text-xl font-bold text-foreground mb-4">Active Team Goals</h2>
                         <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
                             {teamGoals.length > 0 ? (
@@ -576,10 +576,10 @@ const PlayerDashboard: React.FC<{
                         </div>
                     </div>
                 </div>
-                 <div>
+                <div>
                     <div className="flex justify-between items-center mb-4">
-                         <h2 className="text-xl font-bold text-foreground">My Goals</h2>
-                         <button
+                        <h2 className="text-xl font-bold text-foreground">My Goals</h2>
+                        <button
                             onClick={() => {
                                 setGoalFormError(null);
                                 setIsGoalModalOpen(true);
@@ -589,10 +589,10 @@ const PlayerDashboard: React.FC<{
                             + Set Goal
                         </button>
                     </div>
-                     <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
                         {goalListError && <p className="text-sm text-destructive mb-3">{goalListError}</p>}
                         {goals.length > 0 ? (
-                             <div className="space-y-4">
+                            <div className="space-y-4">
                                 {goals.map(g => (
                                     <GoalProgress
                                         key={g.id}
@@ -605,7 +605,7 @@ const PlayerDashboard: React.FC<{
                                 ))}
                             </div>
                         ) : (
-                             <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
+                            <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
                                 <p className="font-medium">You haven’t set any personal goals yet.</p>
                                 <p className="text-sm">Tap “+ Set Goal” to lock in a target for this week.</p>
                             </div>
@@ -673,10 +673,10 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
             targetValue,
             targetDate,
         };
-        if(drillType) goalData.drillType = drillType;
-        if(targetZones.length > 0) goalData.targetZones = targetZones;
-        if(pitchTypes.length > 0) goalData.pitchTypes = pitchTypes;
-        if(metric === 'Execution %') {
+        if (drillType) goalData.drillType = drillType;
+        if (targetZones.length > 0) goalData.targetZones = targetZones;
+        if (pitchTypes.length > 0) goalData.pitchTypes = pitchTypes;
+        if (metric === 'Execution %') {
             goalData.minReps = Math.max(1, minReps);
         }
         await onSave(goalData);
@@ -714,7 +714,7 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
                 <label className="block text-sm font-medium text-muted-foreground">Target Date</label>
                 <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} required className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
             </div>
-            
+
             <div>
                 <h4 className="text-md font-semibold text-muted-foreground border-b border-border pb-2 mb-3">Goal Specificity (Optional)</h4>
                 <div className="space-y-4">
@@ -762,7 +762,7 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
             </div>
 
             <div className="flex justify-end pt-4">
-                 <button
+                <button
                     type="submit"
                     disabled={isSaving}
                     className="py-2 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md disabled:opacity-50"
@@ -1009,21 +1009,21 @@ const LogSession: React.FC<{
     isSaving: boolean;
     errorMessage?: string | null;
 }> = ({ assignedDrill, onSave, onCancel, isSaving, errorMessage }) => {
-    
+
     const isAssigned = !!assignedDrill;
     const initialSet: SetResult = { setNumber: 1, repsAttempted: assignedDrill?.repsPerSet || 10, repsExecuted: 0, hardHits: 0, strikeouts: 0, grade: 5 };
 
     const [drillType, setDrillType] = useState<DrillType>(assignedDrill?.drillType || 'Tee Work');
     const [targetZones, setTargetZones] = useState<TargetZone[]>(assignedDrill?.targetZones || []);
     const [pitchTypes, setPitchTypes] = useState<PitchType[]>(assignedDrill?.pitchTypes || []);
-    const [outs, setOuts] = useState<0|1|2>(assignedDrill?.outs || 0);
+    const [outs, setOuts] = useState<0 | 1 | 2>(assignedDrill?.outs || 0);
     const [count, setCount] = useState<CountSituation>(assignedDrill?.countSituation || 'Even');
     const [runners, setRunners] = useState<BaseRunner[]>(assignedDrill?.baseRunners || []);
-    
+
     const [currentSet, setCurrentSet] = useState<SetResult>(initialSet);
     const [loggedSets, setLoggedSets] = useState<SetResult[]>([]);
     const [reflection, setReflection] = useState('');
-    
+
     const createContextualSet = (set: SetResult): SetResult => ({
         ...set,
         targetZones: targetZones.length ? [...targetZones] : [],
@@ -1039,7 +1039,7 @@ const LogSession: React.FC<{
         if (isAssigned) return;
         setter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
     };
-    
+
     const handleAddSet = () => {
         const setWithContext = createContextualSet(currentSet);
         const newLoggedSets = [...loggedSets, setWithContext];
@@ -1058,7 +1058,7 @@ const LogSession: React.FC<{
         });
     };
 
-    const Stepper: React.FC<{label: string, value: number, onChange: (val: number) => void, max?: number, readOnly?: boolean}> = ({label, value, onChange, max, readOnly}) => (
+    const Stepper: React.FC<{ label: string, value: number, onChange: (val: number) => void, max?: number, readOnly?: boolean }> = ({ label, value, onChange, max, readOnly }) => (
         <div className="text-center">
             <label className="text-sm font-semibold text-muted-foreground">{label}</label>
             <div className="flex items-center justify-center gap-3 mt-2">
@@ -1086,7 +1086,7 @@ const LogSession: React.FC<{
             </div>
         </div>
     );
-    
+
     const totalReps = loggedSets.reduce((sum, s) => sum + s.repsAttempted, 0);
     const totalExec = loggedSets.reduce((sum, s) => sum + s.repsExecuted, 0);
 
@@ -1118,10 +1118,10 @@ const LogSession: React.FC<{
                             {TARGET_ZONES.map(z => <button type="button" key={z} disabled={isAssigned} onClick={() => handleMultiSelect(setTargetZones, z)} className={`p-2 text-xs rounded-md ${targetZones.includes(z) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{z}</button>)}
                         </div>
                     </div>
-                     <div>
+                    <div>
                         <h3 className="font-semibold text-muted-foreground mb-2">Pitch Type (Optional)</h3>
                         <div className="grid grid-cols-3 gap-2">
-                           {PITCH_TYPES.map(p => <button type="button" key={p} disabled={isAssigned} onClick={() => handleMultiSelect(setPitchTypes, p)} className={`p-2 text-xs rounded-md ${pitchTypes.includes(p) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{p}</button>)}
+                            {PITCH_TYPES.map(p => <button type="button" key={p} disabled={isAssigned} onClick={() => handleMultiSelect(setPitchTypes, p)} className={`p-2 text-xs rounded-md ${pitchTypes.includes(p) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{p}</button>)}
                         </div>
                     </div>
                 </div>
@@ -1136,7 +1136,7 @@ const LogSession: React.FC<{
                             {OUTS_OPTIONS.map(o => <button type="button" key={o} disabled={isAssigned} onClick={() => setOuts(o)} className={`flex-1 p-2 text-sm rounded-md ${outs === o ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{o}</button>)}
                         </div>
                     </div>
-                     <div>
+                    <div>
                         <label className="text-sm font-semibold text-muted-foreground">Count</label>
                         <select value={count} disabled={isAssigned} onChange={(e) => setCount(e.target.value as CountSituation)} className="mt-2 w-full bg-background border-input rounded-md py-2 px-3 text-sm disabled:opacity-70">
                             {COUNT_SITUATIONS.map(c => <option key={c}>{c}</option>)}
@@ -1150,19 +1150,19 @@ const LogSession: React.FC<{
                     </div>
                 </div>
             </div>
-            
+
             <div className="bg-card border border-border p-4 rounded-lg shadow-sm space-y-4">
-                 <div>
+                <div>
                     <h3 className="font-semibold text-muted-foreground">Log Set #{currentSet.setNumber}</h3>
                     <p className="text-xs text-muted-foreground">Drill focus: {assignedDrill?.name || drillType}</p>
-                 </div>
-                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                     <Stepper label="Reps" value={currentSet.repsAttempted} onChange={(v) => setCurrentSet(s=>({...s, repsAttempted: v}))} readOnly={isAssigned}/>
-                     <Stepper label="Executions" value={currentSet.repsExecuted} onChange={(v) => setCurrentSet(s=>({...s, repsExecuted: v}))} max={currentSet.repsAttempted} />
-                     <Stepper label="Hard Hits" value={currentSet.hardHits} onChange={(v) => setCurrentSet(s=>({...s, hardHits: v}))} max={currentSet.repsAttempted}/>
-                     <Stepper label="Strikeouts" value={currentSet.strikeouts} onChange={(v) => setCurrentSet(s=>({...s, strikeouts: v}))} max={currentSet.repsAttempted}/>
-                 </div>
-                 <div className="pt-4">
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <Stepper label="Reps" value={currentSet.repsAttempted} onChange={(v) => setCurrentSet(s => ({ ...s, repsAttempted: v }))} readOnly={isAssigned} />
+                    <Stepper label="Executions" value={currentSet.repsExecuted} onChange={(v) => setCurrentSet(s => ({ ...s, repsExecuted: v }))} max={currentSet.repsAttempted} />
+                    <Stepper label="Hard Hits" value={currentSet.hardHits} onChange={(v) => setCurrentSet(s => ({ ...s, hardHits: v }))} max={currentSet.repsAttempted} />
+                    <Stepper label="Strikeouts" value={currentSet.strikeouts} onChange={(v) => setCurrentSet(s => ({ ...s, strikeouts: v }))} max={currentSet.repsAttempted} />
+                </div>
+                <div className="pt-4">
                     <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-3">
                         <div className="flex items-start justify-between gap-4">
                             <div>
@@ -1199,34 +1199,34 @@ const LogSession: React.FC<{
                             <span>10</span>
                         </div>
                     </div>
-                 </div>
-                 <div className="space-y-2">
+                </div>
+                <div className="space-y-2">
                     <button onClick={handleAddSet} className="w-full bg-primary/20 hover:bg-primary/30 text-primary font-bold py-2 px-4 rounded-lg text-sm">Log Set & Start Next</button>
                     <p className="text-xs text-muted-foreground text-center">We’ll stamp each set with the drill info that’s selected when you press the button.</p>
-                 </div>
+                </div>
             </div>
-            
+
             {loggedSets.length > 0 && (
                 <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
                     <h3 className="font-semibold text-muted-foreground mb-2">Session Summary ({totalExec}/{totalReps})</h3>
-                     <ul className="divide-y divide-border">
+                    <ul className="divide-y divide-border">
                         {loggedSets.map((s, i) => (
-                           <li key={i} className="py-2 flex flex-wrap gap-3 justify-between items-center text-sm">
-                               <div>
-                                   <span className="font-bold">Set {s.setNumber}</span>
-                                   { (s.drillLabel || s.drillType) && (
+                            <li key={i} className="py-2 flex flex-wrap gap-3 justify-between items-center text-sm">
+                                <div>
+                                    <span className="font-bold">Set {s.setNumber}</span>
+                                    {(s.drillLabel || s.drillType) && (
                                         <p className="text-xs text-muted-foreground">{s.drillLabel || s.drillType}</p>
-                                   )}
-                               </div>
-                               <span>Reps: {s.repsAttempted}</span>
-                               <span>Exec: {s.repsExecuted}</span>
-                               <span>HH: {s.hardHits}</span>
-                               <span>Grade: {s.grade}</span>
-                           </li>
+                                    )}
+                                </div>
+                                <span>Reps: {s.repsAttempted}</span>
+                                <span>Exec: {s.repsExecuted}</span>
+                                <span>HH: {s.hardHits}</span>
+                                <span>Grade: {s.grade}</span>
+                            </li>
                         ))}
                     </ul>
                 </div>
-             )}
+            )}
 
             <div className="space-y-2">
                 <label className="block text-sm font-semibold text-muted-foreground">Reflection / Notes</label>
@@ -1267,10 +1267,10 @@ const SessionHistory: React.FC<{
                 <ul className="divide-y divide-border">
                     {sessions.length > 0 ? sessions.map(session => {
                         const drill = drills.find(d => d.id === session.drillId);
-                        const progress = drill 
-                            ? getSessionGoalProgress(session, drill) 
+                        const progress = drill
+                            ? getSessionGoalProgress(session, drill)
                             : { value: calculateExecutionPercentage(session.sets), isSuccess: calculateExecutionPercentage(session.sets) >= 70 };
-                        
+
                         const goalType = drill ? drill.goalType : "Execution %";
                         const editDescriptor = describeRelativeDay(session.updatedAt);
                         const hasReflection = Boolean(session.reflection && session.reflection.trim().length > 0);
@@ -1626,9 +1626,9 @@ const JoinTeam: React.FC = () => {
 
 export const PlayerView: React.FC = () => {
     const [currentView, setCurrentView] = useState('dashboard');
-    const { 
-        currentUser, 
-        getAssignedDrillsForPlayerToday, 
+    const {
+        currentUser,
+        getAssignedDrillsForPlayerToday,
         getSessionsForPlayer,
         getSessionsForTeam,
         getDrillsForTeam,
@@ -1710,7 +1710,7 @@ export const PlayerView: React.FC = () => {
     };
 
     const assignedDrills = useMemo(() => (selectedTeamId ? getAssignedDrillsForPlayerToday(player.id, selectedTeamId) : []), [player.id, selectedTeamId, getAssignedDrillsForPlayerToday]);
-    const sessions = useMemo(() => getSessionsForPlayer(player.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [player.id, getSessionsForPlayer]);
+    const sessions = useMemo(() => getSessionsForPlayer(player.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [player.id, getSessionsForPlayer]);
     const teamSessions = useMemo(() => (selectedTeamId ? getSessionsForTeam(selectedTeamId) : []), [selectedTeamId, getSessionsForTeam]);
     const allTeamDrills = useMemo(() => (selectedTeamId ? getDrillsForTeam(selectedTeamId) : []), [selectedTeamId, getDrillsForTeam]);
     const goals = useMemo(() => getGoalsForPlayer(player.id), [player.id, getGoalsForPlayer]);
@@ -1728,7 +1728,7 @@ export const PlayerView: React.FC = () => {
         setDrillToLog(drill);
         setCurrentView('log_session');
     };
-    
+
     const handleStartAdHocSession = () => {
         setLogSessionError(null);
         setLogMode('hitting');
@@ -1755,7 +1755,7 @@ export const PlayerView: React.FC = () => {
             const newSession = await logSession({
                 ...sessionData,
                 playerId: player.id,
-            teamId: selectedTeamId,
+                teamId: selectedTeamId,
                 date: new Date().toISOString(),
             });
 
@@ -1828,7 +1828,7 @@ export const PlayerView: React.FC = () => {
             setIsSavingSession(false);
         }
     };
-    
+
     const handleCloseAnimation = () => {
         setLastSavedSession(null);
         setLogSessionError(null);
@@ -1872,15 +1872,15 @@ export const PlayerView: React.FC = () => {
         { name: 'Analytics', icon: <ChartBarIcon />, view: 'analytics' },
         { name: 'Profile', icon: <ProfileIcon />, view: 'profile' },
     ];
-    
-     const pageTitles: { [key: string]: string } = {
+
+    const pageTitles: { [key: string]: string } = {
         dashboard: `Welcome, ${player.name.split(' ')[0]}!`,
         log_session: logMode === 'pitching' ? 'Log: Pitching Session' : drillToLog ? `Log: ${drillToLog.name}` : 'Log Ad-Hoc Session',
         history: 'My Session History',
         analytics: 'My Analytics',
         profile: 'Profile'
     };
-    
+
     const analyticsData = useMemo(() => {
         const chronoSessions = [...sessions].reverse();
         const allSets = sessions.flatMap(s => s.sets);
@@ -1896,7 +1896,7 @@ export const PlayerView: React.FC = () => {
             'Execution %': calculateExecutionPercentage(s.sets),
             'Hard Hit %': calculateHardHitPercentage(s.sets),
         }));
-        
+
         const drillSuccessMap = new Map<string, { success: number, total: number }>();
         sessions.forEach(session => {
             const drill = allTeamDrills.find(d => d.id === session.drillId);
@@ -1912,7 +1912,7 @@ export const PlayerView: React.FC = () => {
             name,
             'Success Rate': data.total > 0 ? Math.round((data.success / data.total) * 100) : 0,
         }));
-        
+
         const byDrillType: { [key in DrillType]?: { executed: number, attempted: number } } = {};
         const byPitchType: { [key in PitchType]?: { executed: number, attempted: number } } = {};
         const byCount: { [key in CountSituation]: { executed: number, attempted: number } } = { 'Ahead': { executed: 0, attempted: 0 }, 'Even': { executed: 0, attempted: 0 }, 'Behind': { executed: 0, attempted: 0 } };
@@ -1966,12 +1966,12 @@ export const PlayerView: React.FC = () => {
                 .filter(item => item.reps > 0)
                 .sort((a, b) => b.execution - a.execution);
         };
-        
+
         const byDrillTypeData = calculateBreakdownData(byDrillType);
         const byPitchTypeData = calculateBreakdownData(byPitchType);
         const byCountData = calculateBreakdownData(byCount);
-        const byZoneData = calculateBreakdownData(byZone).map(d => ({...d, zone: d.name as TargetZone, topPlayers: []}));
-        
+        const byZoneData = calculateBreakdownData(byZone).map(d => ({ ...d, zone: d.name as TargetZone, topPlayers: [] }));
+
         return { kpi, performanceOverTimeData, drillSuccessData, byDrillTypeData, byPitchTypeData, byCountData, byZoneData };
     }, [sessions, allTeamDrills]);
 
@@ -1982,8 +1982,8 @@ export const PlayerView: React.FC = () => {
     const headerContent = (
         <div className="flex flex-wrap gap-3">
             {currentView === 'dashboard' && (
-                <button 
-                    onClick={handleStartAdHocSession} 
+                <button
+                    onClick={handleStartAdHocSession}
                     className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-2 px-4 rounded-lg text-sm shadow-sm transition-transform hover:scale-105"
                 >
                     Start Ad-Hoc Session
@@ -1999,11 +1999,11 @@ export const PlayerView: React.FC = () => {
     );
 
     const renderContent = () => {
-        switch(currentView) {
+        switch (currentView) {
             case 'dashboard':
                 return (
                     <div className="space-y-6">
-                        <PlayerDashboard 
+                        <PlayerDashboard
                             player={player}
                             assignedDrills={assignedDrills}
                             recentSessions={sessions}
@@ -2032,9 +2032,8 @@ export const PlayerView: React.FC = () => {
                                             setDrillToLog(null);
                                         }
                                     }}
-                                    className={`px-4 py-2 text-sm font-semibold transition-colors ${
-                                        logMode === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-                                    }`}
+                                    className={`px-4 py-2 text-sm font-semibold transition-colors ${logMode === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                                        }`}
                                 >
                                     {mode === 'hitting' ? 'Hitting Session' : 'Pitching Session'}
                                 </button>
@@ -2069,7 +2068,7 @@ export const PlayerView: React.FC = () => {
                     />
                 );
             case 'analytics':
-                 return (
+                return (
                     <div className="space-y-8">
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="lg:col-span-1 flex flex-col gap-4">
@@ -2082,7 +2081,7 @@ export const PlayerView: React.FC = () => {
                             </div>
                         </div>
 
-                        <AnalyticsCharts 
+                        <AnalyticsCharts
                             performanceOverTimeData={analyticsData.performanceOverTimeData}
                             drillSuccessData={analyticsData.drillSuccessData}
                         />
@@ -2106,7 +2105,7 @@ export const PlayerView: React.FC = () => {
                                             {analyticsData.byPitchTypeData.length > 0 ? analyticsData.byPitchTypeData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-accent" />) : <p className="text-muted-foreground text-center py-4">Log pitch types to see this breakdown.</p>}
                                         </div>
                                     </div>
-                                     <div className="bg-card border border-border p-4 rounded-lg shadow-sm md:col-span-2">
+                                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm md:col-span-2">
                                         <h3 className="text-lg font-bold text-primary mb-4">By Count</h3>
                                         <div className="space-y-4">
                                             {analyticsData.byCountData.length > 0 ? analyticsData.byCountData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-secondary" />) : <p className="text-muted-foreground text-center py-4">No data available.</p>}
@@ -2126,9 +2125,9 @@ export const PlayerView: React.FC = () => {
 
     return (
         <>
-            <Dashboard 
-                navItems={navItems} 
-                currentView={currentView} 
+            <Dashboard
+                navItems={navItems}
+                currentView={currentView}
                 setCurrentView={setCurrentView}
                 pageTitle={pageTitles[currentView]}
                 headerContent={headerContent}
@@ -2196,13 +2195,28 @@ export const PlayerView: React.FC = () => {
                         {teamJoinStatus && (
                             <p className={`text-sm ${teamJoinStatus.type === 'success' ? 'text-success' : 'text-destructive'}`}>{teamJoinStatus.message}</p>
                         )}
-                        <button
-                            type="submit"
-                            disabled={isJoiningTeam}
-                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-2 px-4 rounded-lg text-sm transition"
-                        >
-                            {isJoiningTeam ? 'Joining...' : 'Join Team'}
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                type="submit"
+                                disabled={isJoiningTeam}
+                                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-2 px-4 rounded-lg text-sm transition disabled:opacity-50"
+                            >
+                                {isJoiningTeam ? 'Joining...' : 'Join Team'}
+                            </button>
+                            {teamJoinStatus?.type === 'success' && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsManageTeamsOpen(false);
+                                        setTeamJoinStatus(null);
+                                        setTeamCodeInput('');
+                                    }}
+                                    className="flex-1 bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-2 px-4 rounded-lg text-sm transition"
+                                >
+                                    Continue to Dashboard
+                                </button>
+                            )}
+                        </div>
                     </form>
                 </div>
             </Modal>

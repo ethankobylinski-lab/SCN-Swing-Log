@@ -4,6 +4,9 @@ export enum UserRole {
   Player = 'Player',
 }
 
+// MembershipRole represents per-team roles (HeadCoach, AssistantCoach, Player)
+export type MembershipRole = 'Player' | 'HeadCoach' | 'AssistantCoach';
+
 export interface User {
   id: string;
   email?: string; // Email is now optional
@@ -23,22 +26,47 @@ export interface UserPreferences {
 }
 
 export interface Team {
-  id:string;
+  id: string;
   name: string;
-  logoUrl?: string;
   seasonYear: number;
-  coachId: string;
+  coachId: string; // The head coach ID
   primaryColor?: string;
-  joinCodePlayer?: string;
-  joinCodeCoach?: string;
   createdAt?: string;
   createdBy?: string;
 }
 
-// Added JoinCode interface to manage team invitations
+// JoinCode represents permanent invite codes stored in the join_codes table
 export interface JoinCode {
-  id: string; // The code itself
+  code: string; // The 6-character uppercase code
   teamId: string;
+  role: 'player' | 'coach';
+  createdBy?: string;
+  createdAt?: string;
+  expiresAt?: string;
+}
+
+// TeamMember represents normalized membership in the team_members table
+export interface TeamMember {
+  id: string;
+  teamId: string;
+  userId: string;
+  role: MembershipRole;
+  status: 'active' | 'invited' | 'removed';
+  addedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// SessionFeedback represents coach reactions/notes on player sessions
+export interface SessionFeedback {
+  id: string;
+  sessionId: string;
+  teamId: string;
+  coachId: string;
+  reaction?: string; // e.g., 'thumbs_up', 'fire'
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PlayerProfile {

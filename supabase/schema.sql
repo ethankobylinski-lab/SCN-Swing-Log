@@ -1,10 +1,10 @@
 -- Supabase schema and row-level security configuration for the HitJournal app.
--- Run this script inside the Supabase SQL editor or as a migration after creating a new project.
+-- Run this script inside the Supabase SQL editor.
 
--- Enable extensions required for UUID generation and crypto helpers.
+-- 0. General rules & Extensions
 create extension if not exists "pgcrypto";
 
--- Utility function to keep updated_at in sync.
+-- Shared trigger function for updated_at
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
@@ -15,14 +15,14 @@ begin
 end;
 $$;
 
--- Core tables -----------------------------------------------------------------
-
+-- 1. Roles and users
+-- 1.1 public.users (Profile)
 create table if not exists public.users (
-  id uuid primary key references auth.users (id) on delete cascade,
+  id uuid primary key references auth.users(id) on delete cascade,
   email text,
   phone_number text,
   name text not null default '',
-  role text not null check (role in ('Coach', 'Player')),
+  role text not null check (role in ('Coach','Player')),
   team_ids uuid[] not null default '{}'::uuid[],
   coach_team_ids uuid[] not null default '{}'::uuid[],
   is_new boolean not null default true,
@@ -32,43 +32,76 @@ create table if not exists public.users (
   updated_at timestamptz not null default now()
 );
 
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'trg_users_updated_at') then
-    create trigger trg_users_updated_at
-    before update on public.users
-    for each row execute function public.touch_updated_at();
-  end if;
-end $$;
+drop trigger if exists trg_users_updated_at on public.users;
+create trigger trg_users_updated_at
+before update on public.users
+for each row execute function public.touch_updated_at();
 
+-- 2. Teams and membership
+-- 2.1 Teams
 create table if not exists public.teams (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   season_year integer not null,
-  coach_id uuid references public.users (id),
+  coach_id uuid not null references public.users(id), -- Head Coach
+  primary_color text not null default '#000000',
+  created_by uuid not null references public.users(id),
   created_at timestamptz not null default now(),
-  created_by uuid references public.users (id)
+  updated_at timestamptz not null default now()
 );
 
-alter table public.teams
-  add column if not exists created_by uuid references public.users (id);
+create index if not exists idx_teams_coach_id on public.teams(coach_id);
+create index if not exists idx_teams_created_by on public.teams(created_by);
 
-alter table public.teams
-  drop column if exists logo_url;
+drop trigger if exists trg_teams_updated_at on public.teams;
+create trigger trg_teams_updated_at
+before update on public.teams
+for each row execute function public.touch_updated_at();
 
-alter table public.teams
-  drop column if exists primary_color;
+-- 2.2 Team members
+create table if not exists public.team_members (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  user_id uuid not null references public.users(id) on delete cascade,
+  role text not null check (role in ('Player','HeadCoach','AssistantCoach')),
+  status text not null default 'active' check (status in ('active','invited','removed')),
+  added_by uuid references public.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (team_id, user_id)
+);
 
-alter table public.teams
-  drop column if exists join_code_player;
+-- CLEAN SLATE: Delete all existing data to avoid constraint conflicts
+truncate table public.session_feedback cascade;
+truncate table public.sessions cascade;
+truncate table public.personal_goals cascade;
+truncate table public.team_goals cascade;
+truncate table public.assignments cascade;
+truncate table public.drills cascade;
+truncate table public.join_codes cascade;
+truncate table public.team_members cascade;
+truncate table public.teams cascade;
 
-alter table public.teams
-  drop column if exists join_code_coach;
+-- Update check constraint for existing tables
+alter table public.team_members drop constraint if exists team_members_role_check;
+alter table public.team_members add constraint team_members_role_check check (role in ('Player','HeadCoach','AssistantCoach'));
 
+create index if not exists idx_team_members_user_active on public.team_members(user_id) where status = 'active';
+create index if not exists idx_team_members_team_role_active on public.team_members(team_id, role) where status = 'active';
+-- Enforce at most one head coach per team
+create unique index if not exists idx_team_members_one_head_coach on public.team_members(team_id) where role = 'HeadCoach' and status = 'active';
+
+drop trigger if exists trg_team_members_updated_at on public.team_members;
+create trigger trg_team_members_updated_at
+before update on public.team_members
+for each row execute function public.touch_updated_at();
+
+-- 3. Drills, assignments, sessions, goals
+-- 3.1 Drills
 create table if not exists public.drills (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid not null references public.teams (id) on delete cascade,
-  coach_id uuid references public.users (id),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  coach_id uuid references public.users(id),
   name text not null,
   description text not null,
   target_zones text[] not null,
@@ -85,69 +118,92 @@ create table if not exists public.drills (
   updated_at timestamptz not null default now()
 );
 
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'trg_drills_updated_at') then
-    create trigger trg_drills_updated_at
-    before update on public.drills
-    for each row execute function public.touch_updated_at();
-  end if;
-end $$;
+create index if not exists idx_drills_team_id on public.drills(team_id);
+create index if not exists idx_drills_coach_id on public.drills(coach_id);
 
+drop trigger if exists trg_drills_updated_at on public.drills;
+create trigger trg_drills_updated_at
+before update on public.drills
+for each row execute function public.touch_updated_at();
+
+-- 3.2 Assignments
 create table if not exists public.assignments (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid not null references public.teams (id) on delete cascade,
-  drill_id uuid references public.drills (id) on delete set null,
+  team_id uuid not null references public.teams(id) on delete cascade,
+  drill_id uuid references public.drills(id) on delete set null,
   player_ids uuid[] not null default '{}'::uuid[],
   is_recurring boolean not null default false,
   recurring_days text[] not null default '{}'::text[],
   due_date date,
   assigned_date date not null,
-  coach_id uuid references public.users (id),
+  coach_id uuid references public.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'trg_assignments_updated_at') then
-    create trigger trg_assignments_updated_at
-    before update on public.assignments
-    for each row execute function public.touch_updated_at();
-  end if;
-end $$;
+create index if not exists idx_assignments_team_id on public.assignments(team_id);
+create index if not exists idx_assignments_due_date on public.assignments(due_date);
+create index if not exists idx_assignments_coach_id on public.assignments(coach_id);
 
+drop trigger if exists trg_assignments_updated_at on public.assignments;
+create trigger trg_assignments_updated_at
+before update on public.assignments
+for each row execute function public.touch_updated_at();
+
+-- 3.3 Sessions
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid not null references public.teams (id) on delete cascade,
-  player_id uuid not null references public.users (id) on delete cascade,
-  drill_id uuid references public.drills (id) on delete set null,
+  team_id uuid not null references public.teams(id) on delete cascade,
+  player_id uuid not null references public.users(id) on delete cascade,
+  drill_id uuid references public.drills(id) on delete set null,
   name text not null,
   date timestamptz not null,
   type text,
   sets jsonb not null default '[]'::jsonb,
   feedback text,
   reflection text,
-  coach_feedback text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  last_edited_by uuid references public.users (id),
-  logged_by uuid references public.users (id)
+  last_edited_by uuid references public.users(id),
+  logged_by uuid references public.users(id)
 );
 
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'trg_sessions_updated_at') then
-    create trigger trg_sessions_updated_at
-    before update on public.sessions
-    for each row execute function public.touch_updated_at();
-  end if;
-end $$;
+create index if not exists idx_sessions_team_id on public.sessions(team_id);
+create index if not exists idx_sessions_player_id on public.sessions(player_id);
+create index if not exists idx_sessions_date on public.sessions(date);
+create index if not exists idx_sessions_drill_id on public.sessions(drill_id);
 
+drop trigger if exists trg_sessions_updated_at on public.sessions;
+create trigger trg_sessions_updated_at
+before update on public.sessions
+for each row execute function public.touch_updated_at();
+
+-- 3.4 Session feedback
+create table if not exists public.session_feedback (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references public.sessions(id) on delete cascade,
+  team_id uuid not null references public.teams(id) on delete cascade,
+  coach_id uuid not null references public.users(id),
+  reaction text,
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_session_feedback_session_id on public.session_feedback(session_id);
+create index if not exists idx_session_feedback_team_id on public.session_feedback(team_id);
+create index if not exists idx_session_feedback_coach_id on public.session_feedback(coach_id);
+
+drop trigger if exists trg_session_feedback_updated_at on public.session_feedback;
+create trigger trg_session_feedback_updated_at
+before update on public.session_feedback
+for each row execute function public.touch_updated_at();
+
+-- 3.5 Personal goals
 create table if not exists public.personal_goals (
   id uuid primary key default gen_random_uuid(),
-  player_id uuid not null references public.users (id) on delete cascade,
-  team_id uuid not null references public.teams (id) on delete cascade,
+  player_id uuid not null references public.users(id) on delete cascade,
+  team_id uuid not null references public.teams(id) on delete cascade,
   metric text not null,
   target_value numeric not null,
   start_date date not null,
@@ -158,24 +214,25 @@ create table if not exists public.personal_goals (
   pitch_types text[] not null default '{}'::text[],
   reflection text,
   min_reps integer,
-  created_by_user_id uuid references public.users (id),
+  created_by_user_id uuid references public.users(id),
   created_by_role text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'trg_personal_goals_updated_at') then
-    create trigger trg_personal_goals_updated_at
-    before update on public.personal_goals
-    for each row execute function public.touch_updated_at();
-  end if;
-end $$;
+create index if not exists idx_personal_goals_player_id on public.personal_goals(player_id);
+create index if not exists idx_personal_goals_team_id on public.personal_goals(team_id);
+create index if not exists idx_personal_goals_created_by on public.personal_goals(created_by_user_id);
 
+drop trigger if exists trg_personal_goals_updated_at on public.personal_goals;
+create trigger trg_personal_goals_updated_at
+before update on public.personal_goals
+for each row execute function public.touch_updated_at();
+
+-- 3.6 Team goals
 create table if not exists public.team_goals (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid not null references public.teams (id) on delete cascade,
+  team_id uuid not null references public.teams(id) on delete cascade,
   description text not null,
   metric text not null,
   target_value numeric not null,
@@ -185,500 +242,648 @@ create table if not exists public.team_goals (
   drill_type text,
   target_zones text[] not null default '{}'::text[],
   pitch_types text[] not null default '{}'::text[],
-  created_by uuid references public.users (id),
+  created_by uuid references public.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'trg_team_goals_updated_at') then
-    create trigger trg_team_goals_updated_at
-    before update on public.team_goals
-    for each row execute function public.touch_updated_at();
-  end if;
-end $$;
+create index if not exists idx_team_goals_team_id on public.team_goals(team_id);
 
+drop trigger if exists trg_team_goals_updated_at on public.team_goals;
+create trigger trg_team_goals_updated_at
+before update on public.team_goals
+for each row execute function public.touch_updated_at();
+
+-- 4. Join codes
 create table if not exists public.join_codes (
   code text primary key,
-  team_id uuid not null references public.teams (id) on delete cascade,
-  role text not null check (role in ('player','coach')),
-  created_by uuid references public.users (id),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  role text not null default 'player' check (role in ('player','coach')),
+  created_by uuid references public.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  expires_at timestamptz
+  expires_at timestamptz,
+  constraint join_codes_team_role_key unique (team_id, role),
+  constraint join_codes_code_upper check (code = upper(code))
 );
 
-do $$
-begin
-  if not exists (select 1 from pg_trigger where tgname = 'trg_join_codes_updated_at') then
-    create trigger trg_join_codes_updated_at
-    before update on public.join_codes
-    for each row execute function public.touch_updated_at();
-  end if;
-end $$;
+drop trigger if exists trg_join_codes_updated_at on public.join_codes;
+create trigger trg_join_codes_updated_at
+before update on public.join_codes
+for each row execute function public.touch_updated_at();
 
--- Helper functions ------------------------------------------------------------
-
-create or replace function public.array_overlap(a anyarray, b anyarray)
-returns boolean
+-- Join Code Helpers
+create or replace function public.generate_join_code()
+returns text
 language sql
 immutable
+set search_path = public, extensions
 as $$
-  select coalesce(a && b, false);
+  select upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
 $$;
 
+create or replace function public.generate_unique_join_code()
+returns text
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  candidate text;
+begin
+  loop
+    candidate := public.generate_join_code();
+    exit when not exists (select 1 from public.join_codes where code = candidate);
+  end loop;
+  return candidate;
+end;
+$$;
+
+create or replace function public.ensure_team_join_code(target_team uuid, target_role text, creator uuid default null)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized_role text;
+  new_code text;
+begin
+  if target_team is null then return; end if;
+  normalized_role := lower(trim(coalesce(target_role, '')));
+  
+  if normalized_role not in ('player','coach') then
+    raise exception 'invalid role % for join code', target_role;
+  end if;
+
+  if exists (select 1 from public.join_codes where team_id = target_team and role = normalized_role) then
+    return;
+  end if;
+
+  -- Temporarily disable RLS for this function to allow insert
+  perform set_config('request.jwt.claim.sub', creator::text, true);
+  
+  loop
+    new_code := upper(public.generate_unique_join_code());
+    begin
+      insert into public.join_codes (code, team_id, role, created_by)
+      values (new_code, target_team, normalized_role, creator);
+      exit;
+    exception
+      when unique_violation then continue;
+    end;
+  end loop;
+end;
+$$;
+
+create or replace function public.create_team_join_codes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  creator uuid := coalesce(auth.uid(), new.created_by, new.coach_id);
+begin
+  perform public.ensure_team_join_code(new.id, 'player', creator);
+  perform public.ensure_team_join_code(new.id, 'coach', creator);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_teams_create_join_codes on public.teams;
+-- TEMPORARILY DISABLED - This trigger is causing timeouts
+-- create trigger trg_teams_create_join_codes
+-- after insert on public.teams
+-- for each row execute function public.create_team_join_codes();
+
+-- 5. Helper functions for security
 create or replace function public.current_profile()
 returns public.users
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
-  select users.* from public.users where id = auth.uid();
+  select * from public.users where id = auth.uid();
 $$;
 
 create or replace function public.is_coach()
 returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   profile public.users;
 begin
   select * into profile from public.users where id = auth.uid();
-  if profile.id is null then
-    return false;
-  end if;
-  return trim(lower(coalesce(profile.role, ''))) = 'coach';
+  if profile.id is null then return false; end if;
+  return profile.role = 'Coach';
 end;
 $$;
 
 create or replace function public.has_team_membership(team uuid)
 returns boolean
-language plpgsql
+language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
-declare
-  profile public.users;
-begin
-  if team is null then
-    return false;
-  end if;
-
-  select * into profile from public.users where id = auth.uid();
-  if profile.id is null then
-    return false;
-  end if;
-
-  return team = any(coalesce(profile.team_ids, '{}'::uuid[]))
-    or team = any(coalesce(profile.coach_team_ids, '{}'::uuid[]));
-end;
-$$;
-
-create or replace function public.coach_can_manage_team(team uuid)
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  profile public.users;
-begin
-  if team is null then
-    return false;
-  end if;
-
-  select * into profile from public.users where id = auth.uid();
-  if profile.id is null or profile.role <> 'Coach' then
-    return false;
-  end if;
-
-  return team = any(coalesce(profile.coach_team_ids, '{}'::uuid[]))
-    or exists(select 1 from public.teams t where t.id = team and t.coach_id = profile.id);
-end;
+  select exists(
+    select 1 from public.team_members tm
+    where tm.team_id = team
+      and tm.user_id = auth.uid()
+      and tm.status = 'active'
+  );
 $$;
 
 create or replace function public.is_head_coach(team uuid)
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select exists(select 1 from public.teams where id = team and coach_id = auth.uid());
 $$;
 
+create or replace function public.coach_can_manage_team(team uuid)
+returns boolean
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select exists(
+    select 1 from public.team_members tm
+    where tm.team_id = team
+      and tm.user_id = auth.uid()
+      and tm.role in ('HeadCoach','AssistantCoach')
+      and tm.status = 'active'
+  );
+$$;
+
 create or replace function public.coach_can_view_user(target_user uuid)
 returns boolean
-language plpgsql
+language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
-declare
-  coach_profile public.users;
-  target_profile public.users;
-begin
-  select * into coach_profile from public.users where id = auth.uid();
-  if coach_profile.id is null or coach_profile.role <> 'Coach' then
-    return false;
-  end if;
-
-  select * into target_profile from public.users where id = target_user;
-  if target_profile.id is null then
-    return false;
-  end if;
-
-  return array_overlap(coach_profile.team_ids, target_profile.team_ids)
-    or array_overlap(coach_profile.team_ids, target_profile.coach_team_ids)
-    or array_overlap(coach_profile.coach_team_ids, target_profile.team_ids)
-    or array_overlap(coach_profile.coach_team_ids, target_profile.coach_team_ids);
-end;
+  select exists(
+    select 1
+    from public.team_members coach
+    join public.team_members teammate on teammate.team_id = coach.team_id
+    where coach.user_id = auth.uid()
+      and coach.role in ('HeadCoach','AssistantCoach')
+      and coach.status = 'active'
+      and teammate.user_id = target_user
+      and teammate.status = 'active'
+  );
 $$;
 
 create or replace function public.head_coach_can_manage_user(target_user uuid)
 returns boolean
-language plpgsql
+language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
-declare
-  coach_id uuid := auth.uid();
-  target_profile public.users;
-begin
-  if coach_id is null or target_user is null then
-    return false;
-  end if;
-
-  select * into target_profile from public.users where id = target_user;
-  if target_profile.id is null then
-    return false;
-  end if;
-
-  return exists(
+  select exists(
     select 1
     from public.teams t
-    where t.coach_id = coach_id
-      and (
-        t.id = any(coalesce(target_profile.team_ids, '{}'::uuid[]))
-        or t.id = any(coalesce(target_profile.coach_team_ids, '{}'::uuid[]))
-      )
+    join public.team_members teammate on teammate.team_id = t.id
+    where t.coach_id = auth.uid()
+      and teammate.user_id = target_user
+      and teammate.status = 'active'
   );
-end;
 $$;
 
-create or replace function public.resolve_join_code(join_role text, join_code text)
-returns public.teams
+create or replace function public.refresh_user_membership_arrays(target_user uuid)
+returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
-  normalized text;
-  resolved_role text;
-  resolved_team public.teams%rowtype;
+  p_ids uuid[];
+  c_ids uuid[];
 begin
-  normalized := upper(trim(coalesce(join_code, '')));
-  if normalized = '' then
-    raise exception 'join code required';
-  end if;
+  if target_user is null then return; end if;
 
-  resolved_role := lower(coalesce(join_role, 'player'));
-  if resolved_role not in ('player','coach') then
-    raise exception 'invalid role';
-  end if;
+  select
+    coalesce(array_agg(tm.team_id) filter (where tm.role = 'Player' and tm.status = 'active'), '{}'::uuid[]),
+    coalesce(array_agg(tm.team_id) filter (where tm.role in ('HeadCoach','AssistantCoach') and tm.status = 'active'), '{}'::uuid[])
+  into p_ids, c_ids
+  from public.team_members tm
+  where tm.user_id = target_user;
 
-  select t.*
-  into resolved_team
-  from public.join_codes jc
-  join public.teams t on t.id = jc.team_id
-  where upper(jc.code) = normalized
-    and lower(jc.role) = resolved_role
-  limit 1;
-
-  return resolved_team;
+  update public.users
+  set team_ids = p_ids, coach_team_ids = c_ids
+  where id = target_user;
 end;
 $$;
 
--- Automatically set coach ownership metadata for new teams
+create or replace function public.handle_team_member_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  affected_user uuid;
+begin
+  if tg_op = 'DELETE' then
+    affected_user := old.user_id;
+  else
+    affected_user := new.user_id;
+  end if;
+  perform public.refresh_user_membership_arrays(affected_user);
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_team_members_sync on public.team_members;
+create trigger trg_team_members_sync
+after insert or update or delete on public.team_members
+for each row execute function public.handle_team_member_change();
+
+-- One-time seed (idempotent-ish)
+-- ONE-TIME MIGRATION BLOCK (COMMENTED OUT - Only needed for initial migration)
+-- If you're applying this schema to a fresh database, you can uncomment this block
+-- to seed team_members from existing teams.coach_id data
+/*
+do $$
+begin
+  -- Seed HeadCoach from teams if missing
+  insert into public.team_members (team_id, user_id, role, status, added_by)
+  select id, coach_id, 'HeadCoach', 'active', coach_id
+  from public.teams
+  where coach_id is not null
+  on conflict (team_id, user_id) do nothing;
+  
+  -- Refresh all users
+  perform public.refresh_user_membership_arrays(id) from public.users;
+end;
+$$;
+*/
+
+-- 6. Team ownership and seeding membership
 create or replace function public.set_team_owner()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
+declare
+  actor uuid := auth.uid();
 begin
-  if auth.uid() is null then
-    return new;
-  end if;
-
-  if new.coach_id is null then
-    new.coach_id := auth.uid();
-  end if;
-
   if new.created_by is null then
-    new.created_by := auth.uid();
+    new.created_by := coalesce(actor, new.coach_id);
   end if;
-
+  if new.coach_id is null then
+    new.coach_id := coalesce(actor, new.created_by);
+  end if;
+  if new.coach_id is null then
+    raise exception 'coach_id is required when creating a team';
+  end if;
   return new;
 end;
 $$;
 
 drop trigger if exists trg_teams_set_owner on public.teams;
-
 create trigger trg_teams_set_owner
 before insert on public.teams
-for each row
-execute function public.set_team_owner();
+for each row execute function public.set_team_owner();
 
--- RPC helper to create teams through Supabase client safely
-create or replace function public.create_team(team_name text, team_season_year integer)
-returns public.teams
+create or replace function public.seed_team_owner_membership()
+returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
-declare
-  new_team public.teams%rowtype;
 begin
-  if auth.uid() is null then
-    raise exception 'authentication required';
+  if new.coach_id is not null then
+    insert into public.team_members (team_id, user_id, role, status, added_by)
+    values (new.id, new.coach_id, 'HeadCoach', 'active', coalesce(auth.uid(), new.created_by, new.coach_id))
+    on conflict (team_id, user_id) do update
+      set role = 'HeadCoach', status = 'active', updated_at = now();
   end if;
-
-  if not is_coach() then
-    raise exception 'only coaches can create teams';
-  end if;
-
-  insert into public.teams (name, season_year, coach_id, created_by)
-  values (team_name, team_season_year, auth.uid(), auth.uid())
-  returning * into new_team;
-
-  return new_team;
+  return new;
 end;
 $$;
 
-grant execute on function public.resolve_join_code(text, text) to authenticated;
-grant execute on function public.has_team_membership(uuid) to authenticated;
-grant execute on function public.is_head_coach(uuid) to authenticated;
-grant execute on function public.coach_can_manage_team(uuid) to authenticated;
-grant execute on function public.coach_can_view_user(uuid) to authenticated;
-grant execute on function public.is_coach() to authenticated;
-grant execute on function public.head_coach_can_manage_user(uuid) to authenticated;
-grant execute on function public.create_team(text, integer) to authenticated;
+drop trigger if exists trg_teams_seed_membership on public.teams;
+-- TEMPORARILY DISABLED - This trigger is causing timeouts
+-- create trigger trg_teams_seed_membership
+-- after insert on public.teams
+-- for each row execute function public.seed_team_owner_membership();
 
--- Row level security ----------------------------------------------------------
+-- 7. RPC functions
+-- 7.1 create_team (SIMPLIFIED - NO HELPER FUNCTIONS)
+create or replace function public.create_team(team_name text, team_season_year integer, team_primary_color text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  new_team_row public.teams;
+  p_code text;
+  c_code text;
+  current_user_id uuid;
+begin
+  current_user_id := auth.uid();
+  
+  if current_user_id is null then
+    raise exception 'Authentication required';
+  end if;
 
+  -- Insert team
+  insert into public.teams (name, season_year, primary_color, coach_id, created_by)
+  values (
+    team_name,
+    team_season_year,
+    coalesce(nullif(trim(team_primary_color), ''), '#000000'),
+    current_user_id,
+    current_user_id
+  )
+  returning * into new_team_row;
+
+  -- Create HeadCoach membership (since we disabled the trigger)
+  insert into public.team_members (team_id, user_id, role, status, added_by)
+  values (new_team_row.id, current_user_id, 'HeadCoach', 'active', current_user_id)
+  on conflict (team_id, user_id) do nothing;
+
+  -- Generate simple random codes directly (no helper functions)
+  p_code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+  c_code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
+  
+  -- Insert join codes directly
+  insert into public.join_codes (code, team_id, role, created_by)
+  values (p_code, new_team_row.id, 'player', current_user_id);
+  
+  insert into public.join_codes (code, team_id, role, created_by)
+  values (c_code, new_team_row.id, 'coach', current_user_id);
+
+  return jsonb_build_object(
+    'team', row_to_json(new_team_row),
+    'codes', jsonb_build_object(
+      'player', p_code,
+      'coach', c_code
+    )
+  );
+end;
+$$;
+
+-- 7.2 join_team_with_code
+-- Drop existing function first to allow return type changes
+drop function if exists public.join_team_with_code(text, text);
+
+create or replace function public.join_team_with_code(join_code text, join_as text default null)
+returns table (
+  id uuid,
+  name text,
+  season_year integer,
+  coach_id uuid,
+  primary_color text,
+  created_at timestamptz,
+  updated_at timestamptz,
+  created_by uuid,
+  player_team_ids uuid[],
+  coach_team_ids uuid[],
+  membership_role text
+)
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized_code text;
+  target_role text;
+  target_team_id uuid;
+  user_role text;
+  final_role text;
+  user_rec public.users;
+begin
+  normalized_code := upper(trim(join_code));
+  if normalized_code = '' then raise exception 'Code required'; end if;
+  
+  target_role := lower(coalesce(join_as, 'player'));
+  if target_role not in ('player','coach') then raise exception 'Invalid join_as role'; end if;
+
+  -- Find team
+  select team_id into target_team_id
+  from public.join_codes
+  where code = normalized_code and role = target_role;
+
+  if target_team_id is null then
+    raise exception 'Invalid join code';
+  end if;
+
+  -- Check user profile
+  select * into user_rec from public.users where id = auth.uid();
+  if user_rec.id is null then raise exception 'User profile not found'; end if;
+
+  if target_role = 'coach' and user_rec.role <> 'Coach' then
+    raise exception 'Only users with Coach role can join as coach';
+  end if;
+  if target_role = 'player' and user_rec.role <> 'Player' then
+    raise exception 'Only users with Player role can join as player';
+  end if;
+
+  -- Determine membership role
+  if target_role = 'player' then
+    final_role := 'Player';
+  else
+    -- If joining as coach, check if HeadCoach exists
+    if not exists (select 1 from public.team_members where team_id = target_team_id and role = 'HeadCoach' and status = 'active') then
+      final_role := 'HeadCoach';
+    else
+      final_role := 'AssistantCoach';
+    end if;
+  end if;
+
+  -- Upsert membership
+  insert into public.team_members (team_id, user_id, role, status, added_by)
+  values (target_team_id, auth.uid(), final_role, 'active', auth.uid())
+  on conflict (team_id, user_id) do update
+    set role = final_role, status = 'active', updated_at = now();
+
+  perform public.refresh_user_membership_arrays(auth.uid());
+
+  return query
+  select
+    t.id as id, t.name, t.season_year, t.coach_id, t.primary_color, t.created_at, t.updated_at, t.created_by,
+    u.team_ids, u.coach_team_ids,
+    final_role as membership_role
+  from public.teams t
+  cross join public.users u
+  where t.id = target_team_id and u.id = auth.uid();
+end;
+$$;
+
+-- 7.3 leave_team
+create or replace function public.leave_team(team_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  update public.team_members
+  set status = 'removed', updated_at = now()
+  where team_id = leave_team.team_id and user_id = auth.uid();
+  
+  perform public.refresh_user_membership_arrays(auth.uid());
+end;
+$$;
+
+-- 7.4 list_my_teams
+create or replace function public.list_my_teams()
+returns table (
+  team_id uuid,
+  team_name text,
+  season_year integer,
+  coach_id uuid,
+  primary_color text,
+  membership_role text,
+  team_created_at timestamptz
+)
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select
+    t.id, t.name, t.season_year, t.coach_id, t.primary_color,
+    tm.role as membership_role,
+    t.created_at
+  from public.team_members tm
+  join public.teams t on t.id = tm.team_id
+  where tm.user_id = auth.uid()
+    and tm.status = 'active';
+$$;
+
+-- 7.5 promote_or_demote_coach
+create or replace function public.promote_or_demote_coach(team_id uuid, target_user uuid, new_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+begin
+  if new_role not in ('HeadCoach','AssistantCoach') then
+    raise exception 'Invalid role';
+  end if;
+
+  -- Check auth user is HeadCoach
+  if not exists (select 1 from public.teams where id = promote_or_demote_coach.team_id and coach_id = auth.uid()) then
+    raise exception 'Only Head Coach can promote/demote';
+  end if;
+
+  -- Check target is active coach
+  if not exists (select 1 from public.team_members where team_id = promote_or_demote_coach.team_id and user_id = target_user and role in ('HeadCoach','AssistantCoach') and status = 'active') then
+    raise exception 'Target user is not an active coach on this team';
+  end if;
+
+  if new_role = 'HeadCoach' then
+    -- Demote current (me)
+    update public.team_members set role = 'AssistantCoach', updated_at = now()
+    where team_id = promote_or_demote_coach.team_id and user_id = auth.uid();
+    
+    -- Promote target
+    update public.team_members set role = 'HeadCoach', updated_at = now()
+    where team_id = promote_or_demote_coach.team_id and user_id = target_user;
+    
+    -- Update team pointer
+    update public.teams set coach_id = target_user, updated_at = now()
+    where id = promote_or_demote_coach.team_id;
+  else
+    -- Just set target to Assistant
+    update public.team_members set role = 'AssistantCoach', updated_at = now()
+    where team_id = promote_or_demote_coach.team_id and user_id = target_user;
+  end if;
+  
+  perform public.refresh_user_membership_arrays(auth.uid());
+  perform public.refresh_user_membership_arrays(target_user);
+end;
+$$;
+
+-- 8. Row-Level Security (RLS)
+-- Drop all existing policies first to avoid conflicts
+do $$ 
+declare
+  r record;
+begin
+  for r in (
+    select schemaname, tablename, policyname 
+    from pg_policies 
+    where schemaname = 'public'
+  ) loop
+    execute format('drop policy if exists %I on %I.%I', r.policyname, r.schemaname, r.tablename);
+  end loop;
+end $$;
+
+-- Enable RLS on all tables
 alter table public.users enable row level security;
 alter table public.teams enable row level security;
+alter table public.team_members enable row level security;
 alter table public.drills enable row level security;
 alter table public.assignments enable row level security;
 alter table public.sessions enable row level security;
+alter table public.session_feedback enable row level security;
 alter table public.personal_goals enable row level security;
 alter table public.team_goals enable row level security;
 alter table public.join_codes enable row level security;
 
--- Users
-drop policy if exists "Users can select themselves" on public.users;
-create policy "Users can select themselves"
-on public.users
-for select
-using (id = auth.uid());
+-- 8.1 Users
+create policy "Users can select themselves" on public.users for select using (id = auth.uid());
+create policy "Coaches can view their team members" on public.users for select using (public.coach_can_view_user(id));
+create policy "Users can insert themselves" on public.users for insert with check (id = auth.uid());
+create policy "Users can update themselves" on public.users for update using (id = auth.uid()) with check (id = auth.uid());
+create policy "Head coaches can manage coaches they added" on public.users for update using (id = auth.uid() or public.head_coach_can_manage_user(id)) with check (id = auth.uid() or public.head_coach_can_manage_user(id));
 
-drop policy if exists "Coaches can view their team members" on public.users;
-create policy "Coaches can view their team members"
-on public.users
-for select
-using (coach_can_view_user(id));
+-- 8.2 Teams
+create policy "Team members can read team data" on public.teams for select using (public.has_team_membership(id) or coach_id = auth.uid());
+create policy "Coaches can create teams" on public.teams for insert with check (auth.uid() is not null and coalesce(coach_id, auth.uid()) = auth.uid() and coalesce(created_by, auth.uid()) = auth.uid());
+create policy "Head coaches can update their team" on public.teams for update using (coach_id = auth.uid()) with check (coach_id = auth.uid());
+create policy "Head coaches can delete their team" on public.teams for delete using (coach_id = auth.uid());
 
-drop policy if exists "Users can insert themselves" on public.users;
-create policy "Users can insert themselves"
-on public.users
-for insert
-with check (id = auth.uid());
+-- 8.3 Team members
+create policy "Members can view memberships" on public.team_members for select using (user_id = auth.uid() or public.coach_can_manage_team(team_id));
+create policy "Coaches can add memberships" on public.team_members for insert with check (public.coach_can_manage_team(team_id));
+create policy "Coaches can manage memberships" on public.team_members for update using (public.coach_can_manage_team(team_id)) with check (public.coach_can_manage_team(team_id));
+create policy "Coaches can remove memberships" on public.team_members for delete using (public.coach_can_manage_team(team_id));
+create policy "Members can leave teams" on public.team_members for delete using (user_id = auth.uid());
 
-drop policy if exists "Users can update themselves" on public.users;
-create policy "Users can update themselves"
-on public.users
-for update
-using (id = auth.uid())
-with check (id = auth.uid());
+-- 8.4 Drills
+create policy "Team members can read drills" on public.drills for select using (public.has_team_membership(team_id));
+create policy "Coaches can manage drills" on public.drills for all using (public.coach_can_manage_team(team_id)) with check (public.coach_can_manage_team(team_id));
 
-drop policy if exists "Head coaches can manage coaches they added" on public.users;
-create policy "Head coaches can manage coaches they added"
-on public.users
-for update
-using (id = auth.uid() or head_coach_can_manage_user(id))
-with check (id = auth.uid() or head_coach_can_manage_user(id));
+-- 8.5 Assignments
+create policy "Team members can read assignments" on public.assignments for select using (public.has_team_membership(team_id));
+create policy "Coaches can manage assignments" on public.assignments for all using (public.coach_can_manage_team(team_id)) with check (public.coach_can_manage_team(team_id));
 
--- Teams
-drop policy if exists "Team members can read team data" on public.teams;
-create policy "Team members can read team data"
-on public.teams
-for select
-using (has_team_membership(id) or is_head_coach(id));
+-- 8.6 Sessions
+create policy "Players and coaches can read sessions" on public.sessions for select using (player_id = auth.uid() or public.coach_can_manage_team(team_id));
+create policy "Players can create their own sessions" on public.sessions for insert with check (player_id = auth.uid() and public.has_team_membership(team_id));
+create policy "Players can update their own sessions" on public.sessions for update using (player_id = auth.uid()) with check (player_id = auth.uid());
+create policy "Players can delete their sessions" on public.sessions for delete using (player_id = auth.uid());
 
-drop policy if exists "Users can create teams" on public.teams;
-drop policy if exists "Users can create teams they own" on public.teams;
-drop policy if exists "Coaches can create teams they own" on public.teams;
-drop policy if exists "Coaches can create teams" on public.teams;
-create policy "Coaches can create teams"
-on public.teams
-for insert
-with check (
-  auth.uid() is not null
-  and auth.uid() = coach_id
-  and exists (
-    select 1
-    from public.users u
-    where u.id = auth.uid()
-      and trim(lower(coalesce(u.role, ''))) = 'coach'
-  )
-);
+-- 8.7 Session feedback
+create policy "Team members can read feedback" on public.session_feedback for select using (public.has_team_membership(team_id));
+create policy "Only coaches can add feedback" on public.session_feedback for insert with check (public.coach_can_manage_team(team_id));
+create policy "Coaches can manage their own feedback" on public.session_feedback for update using (coach_id = auth.uid() and public.coach_can_manage_team(team_id)) with check (coach_id = auth.uid() and public.coach_can_manage_team(team_id));
+create policy "Coaches can delete their own feedback" on public.session_feedback for delete using (coach_id = auth.uid() and public.coach_can_manage_team(team_id));
 
-drop policy if exists "Head coaches can update their team" on public.teams;
-create policy "Head coaches can update their team"
-on public.teams
-for update
-using (is_head_coach(id))
-with check (is_head_coach(id));
+-- 8.8 Personal goals
+create policy "Personal goals visible to player and coaches" on public.personal_goals for select using (player_id = auth.uid() or public.coach_can_manage_team(team_id));
+create policy "Players manage their own personal goals" on public.personal_goals for all using (player_id = auth.uid()) with check (player_id = auth.uid());
 
-drop policy if exists "Head coaches can delete their team" on public.teams;
-create policy "Head coaches can delete their team"
-on public.teams
-for delete
-using (is_head_coach(id));
+-- 8.9 Team goals
+create policy "Team goals visible to members" on public.team_goals for select using (public.has_team_membership(team_id));
+create policy "Coaches manage team goals" on public.team_goals for all using (public.coach_can_manage_team(team_id)) with check (public.coach_can_manage_team(team_id));
 
--- Drills
-drop policy if exists "Team members can read drills" on public.drills;
-create policy "Team members can read drills"
-on public.drills
-for select
-using (has_team_membership(team_id));
+-- 8.10 Join codes
+create policy "Coaches can view join codes" on public.join_codes for select using (public.coach_can_manage_team(team_id));
+create policy "System can create join codes" on public.join_codes for insert with check (created_by is not null or public.coach_can_manage_team(team_id));
 
-drop policy if exists "Coaches can manage drills" on public.drills;
-create policy "Coaches can manage drills"
-on public.drills
-for all
-using (coach_can_manage_team(team_id))
-with check (coach_can_manage_team(team_id));
-
--- Assignments
-drop policy if exists "Team members can read assignments" on public.assignments;
-create policy "Team members can read assignments"
-on public.assignments
-for select
-using (has_team_membership(team_id));
-
-drop policy if exists "Coaches can manage assignments" on public.assignments;
-create policy "Coaches can manage assignments"
-on public.assignments
-for all
-using (coach_can_manage_team(team_id))
-with check (coach_can_manage_team(team_id));
-
--- Sessions
-drop policy if exists "Players and coaches can read sessions" on public.sessions;
-create policy "Players and coaches can read sessions"
-on public.sessions
-for select
-using (
-  player_id = auth.uid()
-  or coach_can_manage_team(team_id)
-);
-
-drop policy if exists "Players can create their own sessions" on public.sessions;
-create policy "Players can create their own sessions"
-on public.sessions
-for insert
-with check (
-  player_id = auth.uid()
-  and has_team_membership(team_id)
-);
-
-drop policy if exists "Players can update/delete their own sessions" on public.sessions;
-create policy "Players can update/delete their own sessions"
-on public.sessions
-for update
-using (player_id = auth.uid())
-with check (player_id = auth.uid());
-
-drop policy if exists "Coaches can update team sessions" on public.sessions;
-create policy "Coaches can update team sessions"
-on public.sessions
-for update
-using (coach_can_manage_team(team_id))
-with check (coach_can_manage_team(team_id));
-
-drop policy if exists "Players can delete their sessions" on public.sessions;
-create policy "Players can delete their sessions"
-on public.sessions
-for delete
-using (player_id = auth.uid());
-
--- Personal goals
-drop policy if exists "Players and coaches can read personal goals" on public.personal_goals;
-create policy "Players and coaches can read personal goals"
-on public.personal_goals
-for select
-using (
-  player_id = auth.uid()
-  or coach_can_manage_team(team_id)
-);
-
-drop policy if exists "Players and coaches can create personal goals" on public.personal_goals;
-create policy "Players and coaches can create personal goals"
-on public.personal_goals
-for insert
-with check (
-  player_id = auth.uid()
-  or coach_can_manage_team(team_id)
-);
-
-drop policy if exists "Players and coaches can manage personal goals" on public.personal_goals;
-create policy "Players and coaches can manage personal goals"
-on public.personal_goals
-for update
-using (
-  player_id = auth.uid()
-  or coach_can_manage_team(team_id)
-)
-with check (
-  player_id = auth.uid()
-  or coach_can_manage_team(team_id)
-);
-
-drop policy if exists "Players and coaches can delete personal goals" on public.personal_goals;
-create policy "Players and coaches can delete personal goals"
-on public.personal_goals
-for delete
-using (
-  player_id = auth.uid()
-  or coach_can_manage_team(team_id)
-);
-
--- Team goals
-drop policy if exists "Team members can read team goals" on public.team_goals;
-create policy "Team members can read team goals"
-on public.team_goals
-for select
-using (has_team_membership(team_id));
-
-drop policy if exists "Coaches can manage team goals" on public.team_goals;
-create policy "Coaches can manage team goals"
-on public.team_goals
-for all
-using (coach_can_manage_team(team_id))
-with check (coach_can_manage_team(team_id));
-
--- Join codes
-drop policy if exists "Head coaches can manage join codes" on public.join_codes;
-create policy "Head coaches can manage join codes"
-on public.join_codes
-for all
-using (coach_can_manage_team(team_id))
-with check (coach_can_manage_team(team_id));
-
--- Grant table permissions
+-- 9. Grants
 grant usage on schema public to authenticated;
 grant all on all tables in schema public to authenticated;
 grant all on all sequences in schema public to authenticated;

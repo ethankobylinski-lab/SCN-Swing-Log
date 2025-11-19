@@ -14,7 +14,7 @@ export const Onboarding: React.FC = () => {
   const [step, setStep] = useState<'profile' | 'team' | 'code'>('profile');
   const [teamName, setTeamName] = useState('');
   const [teamYear, setTeamYear] = useState(new Date().getFullYear());
-  const [teamColor, setTeamColor] = useState('#1d4ed8');
+  const [teamColor, setTeamColor] = useState('#000000');
   const [coachTeamAction, setCoachTeamAction] = useState<'create' | 'join'>('create');
   const [joinCode, setJoinCode] = useState('');
   const [teamCodes, setTeamCodes] = useState<{ playerCode: string | null; coachCode: string | null } | null>(null);
@@ -23,7 +23,7 @@ export const Onboarding: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState<string | null>(null);
   const context = useContext(DataContext);
-  const colorOptions = ['#1d4ed8', '#2563eb', '#16a34a', '#dc2626', '#f97316', '#7c3aed', '#0f172a'];
+  const colorOptions = ['#000000', '#1d4ed8', '#2563eb', '#16a34a', '#dc2626', '#f97316', '#7c3aed', '#0f172a'];
 
   useEffect(() => {
     if (!context?.currentUser) return;

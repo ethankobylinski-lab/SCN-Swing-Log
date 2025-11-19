@@ -15,6 +15,38 @@ const PlayerView = lazy(async () => {
   return { default: module.PlayerView };
 });
 
+const BackgroundDecor: React.FC = () => (
+  <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 600 600"
+      className="absolute top-[-15%] right-[-10%] w-[55vw] max-w-[620px] text-primary/10"
+    >
+      <path
+        d="M420 40L600 220L420 400"
+        stroke="currentColor"
+        strokeWidth="140"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 700 700"
+      className="absolute bottom-[-20%] left-[-15%] w-[65vw] max-w-[760px] text-foreground/5"
+    >
+      <path
+        d="M50 500C50 250 250 50 500 50C610 50 700 140 700 250"
+        stroke="currentColor"
+        strokeWidth="180"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
+  </div>
+);
+
 export const App: React.FC = () => {
   const context = useContext(DataContext);
 
@@ -64,7 +96,8 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="relative min-h-screen bg-background overflow-hidden">
+      <BackgroundDecor />
       <Suspense
         fallback={
           <div className="min-h-screen flex items-center justify-center">
@@ -72,7 +105,9 @@ export const App: React.FC = () => {
           </div>
         }
       >
-        {renderView()}
+        <main className="relative z-10 min-h-screen">
+          {renderView()}
+        </main>
       </Suspense>
     </div>
   );
