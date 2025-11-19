@@ -153,7 +153,7 @@ for each row execute function public.touch_updated_at();
 -- 3.3 Sessions
 create table if not exists public.sessions (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid not null references public.teams(id) on delete cascade,
+  team_id uuid references public.teams(id) on delete cascade,
   player_id uuid not null references public.users(id) on delete cascade,
   drill_id uuid references public.drills(id) on delete set null,
   name text not null,
@@ -632,10 +632,12 @@ end;
 $$;
 
 -- 7.2 join_team_with_code
+-- 7.2 join_team_with_code
 -- Drop existing function first to allow return type changes
 drop function if exists public.join_team_with_code(text, text);
+drop function if exists public.join_team_with_code(text);
 
-create or replace function public.join_team_with_code(join_code text, join_as text default null)
+create or replace function public.join_team_with_code(p_join_code text, p_join_as text default null)
 returns table (
   id uuid,
   name text,
@@ -661,10 +663,10 @@ declare
   final_role text;
   user_rec public.users;
 begin
-  normalized_code := upper(trim(join_code));
+  normalized_code := upper(trim(p_join_code));
   if normalized_code = '' then raise exception 'Code required'; end if;
   
-  target_role := lower(coalesce(join_as, 'player'));
+  target_role := lower(coalesce(p_join_as, 'player'));
   if target_role not in ('player','coach') then raise exception 'Invalid join_as role'; end if;
 
   -- Find team
@@ -677,7 +679,7 @@ begin
   end if;
 
   -- Check user profile
-  select * into user_rec from public.users where id = auth.uid();
+  select * into user_rec from public.users u where u.id = auth.uid();
   if user_rec.id is null then raise exception 'User profile not found'; end if;
 
   if target_role = 'coach' and user_rec.role <> 'Coach' then
@@ -860,8 +862,8 @@ create policy "Team members can read assignments" on public.assignments for sele
 create policy "Coaches can manage assignments" on public.assignments for all using (public.coach_can_manage_team(team_id)) with check (public.coach_can_manage_team(team_id));
 
 -- 8.6 Sessions
-create policy "Players and coaches can read sessions" on public.sessions for select using (player_id = auth.uid() or public.coach_can_manage_team(team_id));
-create policy "Players can create their own sessions" on public.sessions for insert with check (player_id = auth.uid() and public.has_team_membership(team_id));
+create policy "Players and coaches can read sessions" on public.sessions for select using (player_id = auth.uid() or (team_id is not null and public.coach_can_manage_team(team_id)));
+create policy "Players can create their own sessions" on public.sessions for insert with check (player_id = auth.uid());
 create policy "Players can update their own sessions" on public.sessions for update using (player_id = auth.uid()) with check (player_id = auth.uid());
 create policy "Players can delete their sessions" on public.sessions for delete using (player_id = auth.uid());
 
@@ -880,6 +882,7 @@ create policy "Team goals visible to members" on public.team_goals for select us
 create policy "Coaches manage team goals" on public.team_goals for all using (public.coach_can_manage_team(team_id)) with check (public.coach_can_manage_team(team_id));
 
 -- 8.10 Join codes
+create policy "Anyone can lookup join codes" on public.join_codes for select using (true);
 create policy "Coaches can view join codes" on public.join_codes for select using (public.coach_can_manage_team(team_id));
 create policy "System can create join codes" on public.join_codes for insert with check (created_by is not null or public.coach_can_manage_team(team_id));
 

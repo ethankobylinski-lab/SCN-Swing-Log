@@ -1166,7 +1166,7 @@ const LogSession: React.FC<{
                     <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-3">
                         <div className="flex items-start justify-between gap-4">
                             <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
                                     Set Reflection Grade
                                     <Tooltip content="Slide to rate the quality of the set. Keep it honest—coaches see trends, not individual scores.">
                                         <span
@@ -1177,7 +1177,7 @@ const LogSession: React.FC<{
                                             <InfoIcon className="w-3 h-3" />
                                         </span>
                                     </Tooltip>
-                                </p>
+                                </div>
                                 <p className="text-sm text-muted-foreground">
                                     Reflect on how you did during this set—consider your mental thoughts, improvements, focus, and anything else that stood out.
                                 </p>
@@ -1578,7 +1578,7 @@ const KPICard: React.FC<{ title: string; value: string; description: string; }> 
     </div>
 );
 
-const JoinTeam: React.FC = () => {
+const JoinTeam: React.FC<{ onSkip: () => void }> = ({ onSkip }) => {
     const { currentUser, joinTeamAsPlayer } = useContext(DataContext)!;
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
@@ -1617,6 +1617,9 @@ const JoinTeam: React.FC = () => {
                     />
                     <button type="submit" disabled={loading} className="w-full bg-primary text-primary-foreground py-2 rounded-md font-semibold disabled:opacity-50">
                         {loading ? 'Joining...' : 'Join Team'}
+                    </button>
+                    <button type="button" onClick={onSkip} className="w-full mt-2 text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline">
+                        Continue to Dashboard
                     </button>
                 </form>
             </div>
@@ -1662,6 +1665,7 @@ export const PlayerView: React.FC = () => {
     const [teamCodeInput, setTeamCodeInput] = useState('');
     const [teamJoinStatus, setTeamJoinStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [isJoiningTeam, setIsJoiningTeam] = useState(false);
+    const [hasSkippedTeamJoin, setHasSkippedTeamJoin] = useState(false);
 
     useEffect(() => {
         if (player.teamIds.length === 0) {
@@ -1743,10 +1747,7 @@ export const PlayerView: React.FC = () => {
     }
 
     const handleLogHittingSession = async (sessionData: { name: string; drillId?: string; sets: SetResult[]; reflection?: string }) => {
-        if (!selectedTeamId) {
-            setLogSessionError('Join a team before logging sessions.');
-            return;
-        }
+        // REMOVED: if (!selectedTeamId) check. Logging without a team is now allowed.
 
         setIsSavingSession(true);
         setLogSessionError(null);
@@ -1975,8 +1976,8 @@ export const PlayerView: React.FC = () => {
         return { kpi, performanceOverTimeData, drillSuccessData, byDrillTypeData, byPitchTypeData, byCountData, byZoneData };
     }, [sessions, allTeamDrills]);
 
-    if (!selectedTeamId) {
-        return <JoinTeam />;
+    if (!selectedTeamId && !hasSkippedTeamJoin) {
+        return <JoinTeam onSkip={() => setHasSkippedTeamJoin(true)} />;
     }
 
     const headerContent = (

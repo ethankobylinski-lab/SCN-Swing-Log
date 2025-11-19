@@ -136,7 +136,7 @@ export interface Session {
   playerId: string;
   drillId?: string; // Optional for ad-hoc sessions
   name: string; // Used for drill name or ad-hoc session type
-  teamId: string;
+  teamId?: string;
   date: string; // ISO string
   type?: SessionType;
   sets: SetResult[];

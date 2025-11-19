@@ -1422,8 +1422,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const { data, error } = await supabase
             .rpc('join_team_with_code', {
-                join_code: normalizedCode,
-                join_as: role,  // Fixed: was 'join_role', schema expects 'join_as'
+                p_join_code: normalizedCode,
+                p_join_as: role,
             })
             .single();
         if (error || !data) {
@@ -1761,15 +1761,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const timestamp = new Date().toISOString();
         if (isDemoMode && currentUser.role === UserRole.Player) {
             const resolvedDemoTeamId = providedTeamId ?? activeTeamId;
-            if (!resolvedDemoTeamId) {
-                throw new Error("A team reference is required to log this session.");
-            }
+            // For demo mode, we still might want a team, or maybe not.
+            // But let's stick to the plan: allow no team.
+            // If no team, we just don't set it.
             const newSession: Session = {
                 id: `session-${Date.now()}`,
                 ...sessionDetails,
                 type: sessionType,
                 playerId: currentUser.id,
-                teamId: resolvedDemoTeamId,
+                teamId: resolvedDemoTeamId, // Can be undefined now
                 date: timestamp,
                 createdAt: timestamp,
                 updatedAt: timestamp,
@@ -1781,15 +1781,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const teamId = providedTeamId ?? activeTeamId;
-        if (!teamId) {
-            throw new Error("A team reference is required to log this session.");
-        }
+        // REMOVED: if (!teamId) throw Error...    }
 
         const playerId = currentUser.id;
 
         const payload = {
             player_id: playerId,
-            team_id: teamId,
+            team_id: teamId ?? null, // Allow null
             drill_id: sessionDetails.drillId ?? null,
             name: sessionDetails.name,
             sets: sessionDetails.sets,
@@ -1824,7 +1822,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setPersonalSessions((prev) => upsertSessionList(prev, persistedSession));
         }
 
-        if (teamId === activeTeamId) {
+        if (teamId && teamId === activeTeamId) {
             setTeamSessions((prev) => upsertSessionList(prev, persistedSession));
         }
 

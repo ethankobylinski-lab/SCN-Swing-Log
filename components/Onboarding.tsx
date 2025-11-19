@@ -40,90 +40,90 @@ export const Onboarding: React.FC = () => {
 
   useEffect(() => {
     if (!context?.currentUser || !context.currentUser.isNew) {
-        return;
+      return;
     }
     if (context.currentUser.role !== UserRole.Coach) {
-        return;
+      return;
     }
 
     const hasCoachMembership = (context.currentUser.coachTeamIds?.length ?? 0) > 0 || Boolean(context.activeTeam);
     if (!hasCoachMembership) {
-        return;
+      return;
     }
 
     context.completeOnboarding()
-        .catch((err) => {
-            console.warn('Unable to auto-complete coach onboarding. Please finish manually if this persists.', err);
-        });
+      .catch((err) => {
+        console.warn('Unable to auto-complete coach onboarding. Please finish manually if this persists.', err);
+      });
   }, [context?.currentUser?.isNew, context?.currentUser?.role, context?.currentUser?.coachTeamIds?.length, context?.activeTeam?.id]);
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!context || !name || !role) {
-        setError("Please fill out all required fields.");
-        return;
+      setError("Please fill out all required fields.");
+      return;
     }
     setLoadingLabel('Saving...');
     setLoading(true);
     try {
-        await context.createUserProfile({
-            name,
-            role,
-            playerProfile: role === UserRole.Player ? playerProfile : undefined
-        });
-        if (role === UserRole.Coach) {
-            setStep('team');
-        }
+      await context.createUserProfile({
+        name,
+        role,
+        playerProfile: role === UserRole.Player ? playerProfile : undefined
+      });
+      if (role === UserRole.Coach) {
+        setStep('team');
+      }
     } catch (err) {
-        setError((err as Error).message);
+      setError((err as Error).message);
     } finally {
-        setLoading(false);
-        setLoadingLabel(null);
+      setLoading(false);
+      setLoadingLabel(null);
     }
   };
 
   const handleProfileChange = (field: keyof PlayerProfile, value: string | number) => {
-      setPlayerProfile(prev => ({...prev, [field]: value }));
+    setPlayerProfile(prev => ({ ...prev, [field]: value }));
   };
-  
+
   const handleTeamModeChange = (mode: 'create' | 'join') => {
-      setCoachTeamAction(mode);
-      setError('');
+    setCoachTeamAction(mode);
+    setError('');
   };
 
   const handleTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!context?.currentUser) {
-        setError("Something went wrong. Please refresh and try again.");
-        return;
+      setError("Something went wrong. Please refresh and try again.");
+      return;
     }
     if (!teamName || !teamYear || !teamColor) {
-        setError("Please complete all team fields.");
-        return;
+      setError("Please complete all team fields.");
+      return;
     }
     setLoadingLabel('Creating team...');
     setLoading(true);
     try {
-        const teamResult = await context.createTeam({
-            name: teamName,
-            seasonYear: teamYear,
-            primaryColor: teamColor,
-        });
+      const teamResult = await context.createTeam({
+        name: teamName,
+        seasonYear: teamYear,
+        primaryColor: teamColor,
+      });
 
-        if (!teamResult) {
-            throw new Error("We couldn't create your team. Please try again.");
-        }
+      if (!teamResult) {
+        throw new Error("We couldn't create your team. Please try again.");
+      }
 
-        const { teamId, playerCode, coachCode } = teamResult;
-        setTeamCodes({ playerCode, coachCode });
-        setStep('code');
+      const { teamId, playerCode, coachCode } = teamResult;
+      setTeamCodes({ playerCode, coachCode });
+      setStep('code');
     } catch (err) {
-        setError((err as Error).message || "Unable to create your team. Please try again.");
+      setError((err as Error).message || "Unable to create your team. Please try again.");
     } finally {
-        setLoading(false);
-        setLoadingLabel(null);
+      setLoading(false);
+      setLoadingLabel(null);
     }
   };
 
@@ -131,34 +131,34 @@ export const Onboarding: React.FC = () => {
     e.preventDefault();
     setError('');
     if (!context?.currentUser) {
-        setError("Something went wrong. Please refresh and try again.");
-        return;
+      setError("Something went wrong. Please refresh and try again.");
+      return;
     }
     if (!joinCode.trim()) {
-        setError("Enter the invite code the other coach shared.");
-        return;
+      setError("Enter the invite code the other coach shared.");
+      return;
     }
     setLoadingLabel('Joining team...');
     setLoading(true);
     try {
-        await context.joinTeamAsCoach(joinCode.trim().toUpperCase());
-        setJoinCode('');
-        await context.completeOnboarding();
+      await context.joinTeamAsCoach(joinCode.trim().toUpperCase());
+      setJoinCode('');
+      await context.completeOnboarding();
     } catch (err) {
-        const message = (err as Error).message || "Unable to join this team. Double-check the code and try again.";
-        setError(message);
+      const message = (err as Error).message || "Unable to join this team. Double-check the code and try again.";
+      setError(message);
     } finally {
-        setLoading(false);
-        setLoadingLabel(null);
+      setLoading(false);
+      setLoadingLabel(null);
     }
   };
 
   const handleExitOnboarding = () => {
-      if (!context?.logout) {
-          return;
-      }
-      setError('');
-      context.logout();
+    if (!context?.logout) {
+      return;
+    }
+    setError('');
+    context.logout();
   };
 
   const handleSkipTeamCreation = async () => {
@@ -167,12 +167,12 @@ export const Onboarding: React.FC = () => {
     setLoadingLabel('Continuing...');
     setLoading(true);
     try {
-        await context.completeOnboarding();
+      await context.completeOnboarding();
     } catch (err) {
-        setError((err as Error).message || 'Unable to continue without creating a team.');
+      setError((err as Error).message || 'Unable to continue without creating a team.');
     } finally {
-        setLoading(false);
-        setLoadingLabel(null);
+      setLoading(false);
+      setLoadingLabel(null);
     }
   };
 
@@ -182,19 +182,19 @@ export const Onboarding: React.FC = () => {
     setLoadingLabel('Finishing...');
     setLoading(true);
     try {
-        await context.completeOnboarding();
+      await context.completeOnboarding();
     } catch (err) {
-        setError((err as Error).message);
+      setError((err as Error).message);
     } finally {
-        setLoading(false);
-        setLoadingLabel(null);
+      setLoading(false);
+      setLoadingLabel(null);
     }
   };
 
   const renderProfileStep = () => (
     <form className="space-y-6" onSubmit={handleProfileSubmit}>
       {error && <p className="text-center text-destructive">{error}</p>}
-      
+
       <div>
         <label htmlFor="full-name" className="block text-sm font-medium text-foreground">Full Name</label>
         <input
@@ -207,7 +207,7 @@ export const Onboarding: React.FC = () => {
           onChange={(e) => setName(e.target.value)}
         />
       </div>
-      
+
       <div>
         <label className="block text-sm font-medium text-foreground">I am a...</label>
         <div className="mt-2 grid grid-cols-2 gap-3">
@@ -218,29 +218,29 @@ export const Onboarding: React.FC = () => {
 
       {role === UserRole.Player && (
         <div className="space-y-4 p-4 border border-border rounded-lg">
-            <h3 className="font-semibold text-foreground">Player Details</h3>
-            <div className="grid grid-cols-2 gap-4">
-                 <div>
-                    <label className="block text-xs font-medium text-muted-foreground">Grad Year</label>
-                    <input type="number" value={playerProfile.gradYear} onChange={e => handleProfileChange('gradYear', parseInt(e.target.value))} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm"/>
-                </div>
-                 <div>
-                    <label className="block text-xs font-medium text-muted-foreground">Position</label>
-                    <input type="text" value={playerProfile.position} onChange={e => handleProfileChange('position', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm"/>
-                </div>
-                 <div>
-                    <label className="block text-xs font-medium text-muted-foreground">Bats</label>
-                    <select value={playerProfile.bats} onChange={e => handleProfileChange('bats', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm">
-                        <option>R</option><option>L</option><option>S</option>
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-medium text-muted-foreground">Throws</label>
-                    <select value={playerProfile.throws} onChange={e => handleProfileChange('throws', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm">
-                        <option>R</option><option>L</option>
-                    </select>
-                </div>
+          <h3 className="font-semibold text-foreground">Player Details</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground">Grad Year</label>
+              <input type="number" value={playerProfile.gradYear} onChange={e => handleProfileChange('gradYear', parseInt(e.target.value))} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm" />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground">Position</label>
+              <input type="text" value={playerProfile.position} onChange={e => handleProfileChange('position', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground">Bats</label>
+              <select value={playerProfile.bats} onChange={e => handleProfileChange('bats', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm">
+                <option>R</option><option>L</option><option>S</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground">Throws</label>
+              <select value={playerProfile.throws} onChange={e => handleProfileChange('throws', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm">
+                <option>R</option><option>L</option>
+              </select>
+            </div>
+          </div>
         </div>
       )}
 
@@ -270,18 +270,16 @@ export const Onboarding: React.FC = () => {
         <button
           type="button"
           onClick={() => handleTeamModeChange('create')}
-          className={`py-3 px-4 rounded-lg font-semibold transition-colors ${
-            coachTeamAction === 'create' ? 'bg-secondary text-secondary-foreground' : 'bg-muted hover:bg-muted/80'
-          }`}
+          className={`py-3 px-4 rounded-lg font-semibold transition-colors ${coachTeamAction === 'create' ? 'bg-secondary text-secondary-foreground' : 'bg-muted hover:bg-muted/80'
+            }`}
         >
           Create new team
         </button>
         <button
           type="button"
           onClick={() => handleTeamModeChange('join')}
-          className={`py-3 px-4 rounded-lg font-semibold transition-colors ${
-            coachTeamAction === 'join' ? 'bg-secondary text-secondary-foreground' : 'bg-muted hover:bg-muted/80'
-          }`}
+          className={`py-3 px-4 rounded-lg font-semibold transition-colors ${coachTeamAction === 'join' ? 'bg-secondary text-secondary-foreground' : 'bg-muted hover:bg-muted/80'
+            }`}
         >
           Join with code
         </button>
@@ -322,9 +320,8 @@ export const Onboarding: React.FC = () => {
                   type="button"
                   key={color}
                   onClick={() => setTeamColor(color)}
-                  className={`h-10 w-10 rounded-full border-2 transition-shadow ${
-                    teamColor === color ? 'border-secondary shadow-glow-primary' : 'border-border'
-                  }`}
+                  className={`h-10 w-10 rounded-full border-2 transition-shadow ${teamColor === color ? 'border-secondary shadow-glow-primary' : 'border-border'
+                    }`}
                   style={{ backgroundColor: color }}
                 >
                   <span className="sr-only">Select color {color}</span>
@@ -372,6 +369,14 @@ export const Onboarding: React.FC = () => {
             className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
           >
             {loading ? loadingLabel ?? 'Joining team...' : 'Join Team as Coach'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSkipTeamCreation}
+            disabled={loading}
+            className="w-full text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          >
+            Continue without joining a team
           </button>
         </form>
       )}
@@ -443,13 +448,13 @@ export const Onboarding: React.FC = () => {
         )}
         <div>
           <h1 className="text-3xl font-bold text-center text-foreground">Welcome!</h1>
-        <p className="text-center text-muted-foreground mt-2">
-          {step === 'profile' && 'Let’s set up your profile.'}
-          {step === 'team' && (coachTeamAction === 'create'
-            ? 'Almost there—create your team to finish setup.'
-            : 'Enter an existing coach’s invite code to jump into their team.')}
-          {step === 'code' && 'Team created! Share the invite code and jump in.'}
-        </p>
+          <p className="text-center text-muted-foreground mt-2">
+            {step === 'profile' && 'Let’s set up your profile.'}
+            {step === 'team' && (coachTeamAction === 'create'
+              ? 'Almost there—create your team to finish setup.'
+              : 'Enter an existing coach’s invite code to jump into their team.')}
+            {step === 'code' && 'Team created! Share the invite code and jump in.'}
+          </p>
         </div>
         {step === 'profile' && renderProfileStep()}
         {step === 'team' && renderTeamStep()}
