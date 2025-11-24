@@ -124,13 +124,13 @@ const CoachAnalyticsPage: React.FC<{ analyticsData: CoachAnalyticsData; pitching
                     <div className="bg-muted p-1 rounded-lg inline-flex">
                         <button
                             onClick={() => setActiveTab('hitting')}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'hitting' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                            className="px-4 py-2 text-sm font-medium rounded-md transition-colors text-muted-foreground hover:text-foreground"
                         >
                             Hitting
                         </button>
                         <button
                             onClick={() => setActiveTab('pitching')}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'pitching' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                            className="px-4 py-2 text-sm font-medium rounded-md transition-colors bg-background text-foreground shadow-sm"
                         >
                             Pitching
                         </button>
@@ -198,13 +198,13 @@ const CoachAnalyticsPage: React.FC<{ analyticsData: CoachAnalyticsData; pitching
                 <div className="bg-muted p-1 rounded-lg inline-flex">
                     <button
                         onClick={() => setActiveTab('hitting')}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'hitting' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                        className="px-4 py-2 text-sm font-medium rounded-md transition-colors bg-background text-foreground shadow-sm"
                     >
                         Hitting
                     </button>
                     <button
                         onClick={() => setActiveTab('pitching')}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'pitching' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                        className="px-4 py-2 text-sm font-medium rounded-md transition-colors text-muted-foreground hover:text-foreground"
                     >
                         Pitching
                     </button>
