@@ -1,115 +1,457 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Baseball Hitting Tracker</title>
 
-    <!-- Fonts & Tailwind -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap"
-      rel="stylesheet"
-    />
-    <script src="https://cdn.tailwindcss.com"></script>
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/jpeg" href="/dt-logo.jpg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Diamond Tracker</title>
 
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          container: { center: true, padding: { DEFAULT: '1rem', sm: '2rem', lg: '4rem', xl: '5rem' } },
-          extend: {
-            fontFamily: { sans: ['Inter', 'sans-serif'] },
-            colors: {
-              border: 'hsl(var(--border))',
-              input: 'hsl(var(--input))',
-              ring: 'hsl(var(--ring))',
-              background: 'hsl(var(--background))',
-              foreground: 'hsl(var(--foreground))',
-              primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
-              secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
-              accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
-              destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
-              success: { DEFAULT: 'hsl(var(--success))', foreground: 'hsl(var(--success-foreground))' },
-              muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
-              popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
-              card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
-            },
-            borderRadius: {
-              lg: `var(--radius)`,
-              md: `calc(var(--radius) - 2px)`,
-              sm: `calc(var(--radius) - 4px)`,
-            },
-            boxShadow: {
-              'glow-primary': '0 0 15px 5px rgba(var(--primary-rgb), 0.3)',
-            },
+  <!-- Fonts & Tailwind -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        container: { center: true, padding: { DEFAULT: '1rem', sm: '2rem', lg: '4rem', xl: '5rem' } },
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+            accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+            destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+            success: { DEFAULT: 'hsl(var(--success))', foreground: 'hsl(var(--success-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+          },
+          borderRadius: {
+            lg: `var(--radius)`,
+            md: `calc(var(--radius) - 2px)`,
+            sm: `calc(var(--radius) - 4px)`,
+          },
+          boxShadow: {
+            'glow-primary': '0 0 15px 5px rgba(var(--primary-rgb), 0.3)',
           },
         },
-      };
-    </script>
+      },
+    };
+  </script>
 
-    <style>
-      :root {
-        --background: 210 33% 98%;
-        --foreground: 222.2 47.4% 12%;
-        --muted: 214 32% 94%;
-        --muted-foreground: 220 16% 28%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 222.2 47.4% 11.2%;
-        --card: 0 0% 100%;
-        --card-foreground: 222.2 47.4% 11.2%;
-        --border: 214.3 30% 85%;
-        --input: 214.3 30% 85%;
-        --primary: 221.2 83.2% 53.3%;
-        --primary-rgb: 39, 98, 234;
-        --primary-foreground: 210 40% 98%;
-        --secondary: 142.1 76.2% 36.3%;
-        --secondary-foreground: 210 40% 98%;
-        --accent: 38.2 95.8% 53.1%;
-        --accent-foreground: 222.2 47.4% 11.2%;
-        --destructive: 0 100% 50%;
-        --destructive-foreground: 210 40% 98%;
-        --success: 142.1 70.2% 46.3%;
-        --success-foreground: 210 40% 98%;
-        --ring: 215 20.2% 65.1%;
-        --radius: 0.75rem;
-      }
-      .dark {
-        --background: 224 71% 4%;
-        --foreground: 213 31% 91%;
-        --muted: 223 47% 11%;
-        --muted-foreground: 215.4 16.3% 68%;
-        --popover: 224 71% 4%;
-        --popover-foreground: 215 20.2% 65.1%;
-        --card: 224 71% 4%;
-        --card-foreground: 213 31% 91%;
-        --border: 216 34% 17%;
-        --input: 216 34% 17%;
-        --primary: 210 40% 98%;
-        --primary-rgb: 250, 250, 250;
-        --primary-foreground: 222.2 47.4% 1.2%;
-        --secondary: 142.1 70.2% 46.3%;
-        --secondary-foreground: 210 40% 98%;
-        --accent: 38.2 95.8% 53.1%;
-        --accent-foreground: 222.2 47.4% 11.2%;
-        --destructive: 0 63% 31%;
-        --destructive-foreground: 210 40% 98%;
-        --success: 142.1 70.2% 46.3%;
-        --success-foreground: 210 40% 98%;
-        --ring: 216 34% 17%;
+  <style>
+    :root {
+      --background: 210 33% 98%;
+      --foreground: 222.2 47.4% 12%;
+      --muted: 214 32% 94%;
+      --muted-foreground: 220 16% 28%;
+      --popover: 0 0% 100%;
+      --popover-foreground: 222.2 47.4% 11.2%;
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 47.4% 11.2%;
+      --border: 214.3 30% 85%;
+      --input: 214.3 30% 85%;
+      --primary: 221.2 83.2% 53.3%;
+      --primary-rgb: 39, 98, 234;
+      --primary-foreground: 210 40% 98%;
+      --secondary: 142.1 76.2% 36.3%;
+      --secondary-foreground: 210 40% 98%;
+      --accent: 38.2 95.8% 53.1%;
+      --accent-foreground: 222.2 47.4% 11.2%;
+      --destructive: 0 100% 50%;
+      --destructive-foreground: 210 40% 98%;
+      --success: 142.1 70.2% 46.3%;
+      --success-foreground: 210 40% 98%;
+      --ring: 215 20.2% 65.1%;
+      --radius: 0.75rem;
+    }
+
+    .dark {
+      --background: 224 71% 4%;
+      --foreground: 213 31% 91%;
+      --muted: 223 47% 11%;
+      --muted-foreground: 215.4 16.3% 68%;
+      --popover: 224 71% 4%;
+      --popover-foreground: 215 20.2% 65.1%;
+      --card: 224 71% 4%;
+      --card-foreground: 213 31% 91%;
+      --border: 216 34% 17%;
+      --input: 216 34% 17%;
+      --primary: 210 40% 98%;
+      --primary-rgb: 250, 250, 250;
+      --primary-foreground: 222.2 47.4% 1.2%;
+      --secondary: 142.1 70.2% 46.3%;
+      --secondary-foreground: 210 40% 98%;
+      --accent: 38.2 95.8% 53.1%;
+      --accent-foreground: 222.2 47.4% 11.2%;
+      --destructive: 0 63% 31%;
+      --destructive-foreground: 210 40% 98%;
+      --success: 142.1 70.2% 46.3%;
+      --success-foreground: 210 40% 98%;
+      --ring: 216 34% 17%;
+    }
+
+    /* Animation Keyframes */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
       }
 
-      body {
-        background-color: hsl(var(--background));
-        color: hsl(var(--foreground));
-        line-height: 1.6;
+      to {
+        opacity: 1;
       }
-    </style>
-  </head>
+    }
 
-  <body class="bg-background text-foreground font-sans antialiased">
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFromRight {
+      from {
+        opacity: 0;
+        transform: translateX(30px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes scaleIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: -200% 0;
+      }
+
+      100% {
+        background-position: 200% 0;
+      }
+    }
+
+    @keyframes bounce-subtle {
+
+      0%,
+      100% {
+        transform: translateY(0);
+      }
+
+      50% {
+        transform: translateY(-4px);
+      }
+    }
+
+    @keyframes pulse-glow {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0.4);
+      }
+
+      50% {
+        box-shadow: 0 0 0 8px rgba(var(--primary-rgb), 0);
+      }
+    }
+
+    /* Phase 3: New Animation Keyframes */
+
+    /* Button Press Animation */
+    @keyframes buttonPress {
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(0.97);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    /* Success Pulse for Button Feedback */
+    @keyframes successPulse {
+      0% {
+        transform: scale(1);
+      }
+
+      30% {
+        transform: scale(1.03);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    /* Ripple Expand for Rep Logging */
+    @keyframes rippleExpand {
+      0% {
+        transform: scale(0.8);
+        opacity: 0.6;
+      }
+
+      100% {
+        transform: scale(2);
+        opacity: 0;
+      }
+    }
+
+    /* Page Transitions */
+    @keyframes fadeSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeSlideDown {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      to {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
+    }
+
+    /* Pitch Dot Pop-in */
+    @keyframes pitchDotPopIn {
+      0% {
+        transform: scale(0);
+        opacity: 0;
+      }
+
+      70% {
+        transform: scale(1.1);
+        opacity: 1;
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* Target Zone Highlight Bounce */
+    @keyframes targetBounce {
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.05);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    /* Chart Animations */
+    @keyframes barGrow {
+      from {
+        transform: scaleY(0);
+        transform-origin: bottom;
+      }
+
+      to {
+        transform: scaleY(1);
+        transform-origin: bottom;
+      }
+    }
+
+    @keyframes spokeExpand {
+      from {
+        transform: scale(0);
+        opacity: 0;
+      }
+
+      to {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* Staggered Card Entry */
+    @keyframes cardFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Counter Animation */
+    @keyframes counterUp {
+      from {
+        transform: translateY(10px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* Sliding Tab Indicator */
+    @keyframes slideIndicator {
+      from {
+        transform: translateX(var(--from-x));
+      }
+
+      to {
+        transform: translateX(var(--to-x));
+      }
+    }
+
+    /* Animation Utility Classes */
+    .animate-fadeIn {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .animate-fadeInUp {
+      animation: fadeInUp 0.4s ease-out;
+    }
+
+    .animate-slideInFromRight {
+      animation: slideInFromRight 0.3s ease-out;
+    }
+
+    .animate-scaleIn {
+      animation: scaleIn 0.2s ease-out;
+    }
+
+    .animate-bounce-subtle {
+      animation: bounce-subtle 0.6s ease-in-out;
+    }
+
+    /* Phase 3: New Animation Utilities */
+    .animate-fadeSlideUp {
+      animation: fadeSlideUp 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .animate-fadeSlideDown {
+      animation: fadeSlideDown 150ms ease-out;
+    }
+
+    .animate-successPulse {
+      animation: successPulse 180ms cubic-bezier(0.17, 0.89, 0.32, 1.27);
+    }
+
+    .animate-pitchDotPopIn {
+      animation: pitchDotPopIn 180ms cubic-bezier(0.17, 0.89, 0.32, 1.27);
+    }
+
+    .animate-targetBounce {
+      animation: targetBounce 160ms ease-out;
+    }
+
+    .animate-rippleExpand {
+      animation: rippleExpand 250ms ease-out;
+    }
+
+    .animate-cardFadeIn {
+      animation: cardFadeIn 200ms ease-out;
+      animation-fill-mode: both;
+    }
+
+    .animate-counterUp {
+      animation: counterUp 150ms ease-out;
+    }
+
+    /* Hover and Interactive Utilities */
+    .hover-lift {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .hover-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .hover-scale {
+      transition: transform 0.2s ease;
+    }
+
+    .hover-scale:hover {
+      transform: scale(1.02);
+    }
+
+    .active-press {
+      transition: transform 90ms cubic-bezier(0.17, 0.89, 0.32, 1.27);
+    }
+
+    .active-press:active {
+      transform: scale(0.98);
+    }
+
+    /* Smooth transitions for common properties */
+    .transition-smooth {
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .transition-athletic {
+      transition: all 0.2s cubic-bezier(0.17, 0.89, 0.32, 1.27);
+    }
+
+    /* GPU Acceleration Hint */
+    .will-animate {
+      will-change: transform, opacity;
+    }
+
+    body {
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body class="bg-background text-foreground font-sans antialiased">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
 </html>

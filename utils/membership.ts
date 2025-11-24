@@ -28,7 +28,6 @@ export const resolveTeamFromJoinCode = async (rawCode: string, role: JoinRole): 
 type TeamRow = {
   id: string;
   name: string;
-  logo_url?: string | null;
   season_year: number;
   coach_id: string;
   primary_color?: string | null;
@@ -39,7 +38,6 @@ type TeamRow = {
 const mapTeamRow = (row: TeamRow): Team => ({
   id: row.id,
   name: row.name,
-  logoUrl: row.logo_url ?? undefined,
   seasonYear: row.season_year,
   coachId: row.coach_id,
   primaryColor: row.primary_color ?? undefined,

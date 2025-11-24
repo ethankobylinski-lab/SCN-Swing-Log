@@ -2,16 +2,16 @@ import { Session, Drill, SetResult, PersonalGoal, GoalType, DrillType, TeamGoal 
 import { DRILL_TYPES } from '../constants';
 
 export const generateTeamCode = (): string => {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
 };
 
 export const formatDate = (dateString: string, options?: Intl.DateTimeFormatOptions): string => {
-  const defaultOptions: Intl.DateTimeFormatOptions = {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  };
-  return new Date(dateString).toLocaleDateString('en-US', options || defaultOptions);
+    const defaultOptions: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    };
+    return new Date(dateString).toLocaleDateString('en-US', options || defaultOptions);
 };
 
 export const calculateExecutionPercentage = (sets: SetResult[]): number => {
@@ -113,7 +113,7 @@ export const getCurrentTeamMetricValue = (goal: TeamGoal, sessions: Session[], d
     }
 
     let filteredSets = setsWithSession.map(({ set }) => set);
-    
+
     if (goal.targetZones && goal.targetZones.length > 0) {
         filteredSets = filteredSets.filter(set =>
             set.targetZones?.some(zone => goal.targetZones!.includes(zone))
@@ -125,7 +125,7 @@ export const getCurrentTeamMetricValue = (goal: TeamGoal, sessions: Session[], d
             set.pitchTypes?.some(pitch => goal.pitchTypes!.includes(pitch))
         );
     }
-    
+
     if (filteredSets.length === 0) return 0;
 
     switch (goal.metric) {
@@ -155,9 +155,9 @@ export const formatGoalName = (goal: PersonalGoal): string => {
     }
     if (goal.targetZones && goal.targetZones.length > 0) {
         if (goal.targetZones.length > 2) {
-             specifics.push(`${goal.targetZones.length} zones`);
+            specifics.push(`${goal.targetZones.length} zones`);
         } else {
-             specifics.push(goal.targetZones.join(', '));
+            specifics.push(goal.targetZones.join(', '));
         }
     }
     if (specifics.length > 0) {
@@ -176,15 +176,15 @@ export const formatTeamGoalName = (goal: TeamGoal): string => {
     }
     if (goal.targetZones && goal.targetZones.length > 0) {
         if (goal.targetZones.length > 2) {
-             specifics.push(`${goal.targetZones.length} zones`);
+            specifics.push(`${goal.targetZones.length} zones`);
         } else {
-             specifics.push(goal.targetZones.join(', '));
+            specifics.push(goal.targetZones.join(', '));
         }
     }
     if (specifics.length > 0) {
-    return `${goal.metric} (${specifics.join(' & ')})`;
-  }
-  return goal.metric;
+        return `${goal.metric} (${specifics.join(' & ')})`;
+    }
+    return goal.metric;
 };
 
 export const describeRelativeDay = (isoDate?: string): string | null => {
@@ -208,28 +208,157 @@ export const describeRelativeDay = (isoDate?: string): string | null => {
 };
 
 export const addTrendLineData = (data: { [key: string]: any }[], dataKey: string): { [key: string]: any }[] => {
-  const points = data
-    .map((d, index) => ({ x: index, y: d[dataKey] }))
-    .filter(p => typeof p.y === 'number' && !isNaN(p.y));
+    const points = data
+        .map((d, index) => ({ x: index, y: d[dataKey] }))
+        .filter(p => typeof p.y === 'number' && !isNaN(p.y));
 
-  if (points.length < 2) {
-    return data;
-  }
+    if (points.length < 2) {
+        return data;
+    }
 
-  const n = points.length;
-  
-  const sumX = points.reduce((acc, p) => acc + p.x, 0);
-  const sumY = points.reduce((acc, p) => acc + p.y, 0);
-  const sumXY = points.reduce((acc, p) => acc + p.x * p.y, 0);
-  const sumX2 = points.reduce((acc, p) => acc + p.x * p.x, 0);
+    const n = points.length;
 
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-  
-  const trendKey = `${dataKey} Trend`;
+    const sumX = points.reduce((acc, p) => acc + p.x, 0);
+    const sumY = points.reduce((acc, p) => acc + p.y, 0);
+    const sumXY = points.reduce((acc, p) => acc + p.x * p.y, 0);
+    const sumX2 = points.reduce((acc, p) => acc + p.x * p.x, 0);
 
-  return data.map((d, index) => ({
-    ...d,
-    [trendKey]: slope * index + intercept
-  }));
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    const trendKey = `${dataKey} Trend`;
+
+    return data.map((d, index) => ({
+        ...d,
+        [trendKey]: slope * index + intercept
+    }));
+};
+
+// New hitting analytics helpers
+
+export const calculateContactPercentage = (sets: SetResult[]): number => {
+    const totalAttempted = sets.reduce((sum, set) => sum + set.repsAttempted, 0);
+    const totalStrikeouts = sets.reduce((sum, set) => sum + set.strikeouts, 0);
+    if (totalAttempted === 0) return 0;
+    const contacts = totalAttempted - totalStrikeouts;
+    return Math.round((contacts / totalAttempted) * 100);
+};
+
+export const calculate2StrikeBattlePercentage = (sets: SetResult[]): number => {
+    const twoStrikeSets = sets.filter(set => set.countSituation === 'Behind');
+    if (twoStrikeSets.length === 0) return 0;
+    return calculateExecutionPercentage(twoStrikeSets);
+};
+
+export interface BreakdownData {
+    name: string;
+    reps: number;
+    execution: number;
+}
+
+export const groupSetsByDrill = (sessions: Session[], drills: Drill[]): BreakdownData[] => {
+    const grouped: Record<string, { repsAttempted: number; repsExecuted: number }> = {};
+
+    sessions.forEach(session => {
+        session.sets.forEach(set => {
+            const drillType = resolveDrillTypeForSet(session, set, drills);
+            if (!drillType) return;
+
+            if (!grouped[drillType]) {
+                grouped[drillType] = { repsAttempted: 0, repsExecuted: 0 };
+            }
+            grouped[drillType].repsAttempted += set.repsAttempted;
+            grouped[drillType].repsExecuted += set.repsExecuted;
+        });
+    });
+
+    return Object.entries(grouped).map(([name, data]) => ({
+        name,
+        reps: data.repsAttempted,
+        execution: data.repsAttempted > 0 ? Math.round((data.repsExecuted / data.repsAttempted) * 100) : 0,
+    }));
+};
+
+export const groupSetsByPitch = (sessions: Session[]): BreakdownData[] => {
+    const grouped: Record<string, { repsAttempted: number; repsExecuted: number }> = {};
+
+    sessions.forEach(session => {
+        session.sets.forEach(set => {
+            if (!set.pitchTypes || set.pitchTypes.length === 0) return;
+
+            set.pitchTypes.forEach(pitchType => {
+                if (!grouped[pitchType]) {
+                    grouped[pitchType] = { repsAttempted: 0, repsExecuted: 0 };
+                }
+                // Distribute reps evenly across pitch types in the set
+                const repsPerPitch = set.repsAttempted / set.pitchTypes.length;
+                const execPerPitch = set.repsExecuted / set.pitchTypes.length;
+                grouped[pitchType].repsAttempted += repsPerPitch;
+                grouped[pitchType].repsExecuted += execPerPitch;
+            });
+        });
+    });
+
+    return Object.entries(grouped).map(([name, data]) => ({
+        name,
+        reps: Math.round(data.repsAttempted),
+        execution: data.repsAttempted > 0 ? Math.round((data.repsExecuted / data.repsAttempted) * 100) : 0,
+    }));
+};
+
+export const groupSetsByCount = (sessions: Session[]): BreakdownData[] => {
+    const grouped: Record<string, { repsAttempted: number; repsExecuted: number }> = {
+        'Ahead': { repsAttempted: 0, repsExecuted: 0 },
+        'Even': { repsAttempted: 0, repsExecuted: 0 },
+        'Behind': { repsAttempted: 0, repsExecuted: 0 },
+    };
+
+    sessions.forEach(session => {
+        session.sets.forEach(set => {
+            const situation = set.countSituation || 'Even';
+            grouped[situation].repsAttempted += set.repsAttempted;
+            grouped[situation].repsExecuted += set.repsExecuted;
+        });
+    });
+
+    return Object.entries(grouped)
+        .filter(([_, data]) => data.repsAttempted > 0)
+        .map(([name, data]) => ({
+            name,
+            reps: data.repsAttempted,
+            execution: Math.round((data.repsExecuted / data.repsAttempted) * 100),
+        }));
+};
+
+export interface ZoneBreakdownData {
+    zone: import('../types').TargetZone;
+    execution: number;
+    reps: number;
+}
+
+export const groupSetsByZone = (sessions: Session[]): ZoneBreakdownData[] => {
+    const grouped: Record<string, { repsAttempted: number; repsExecuted: number }> = {};
+
+    sessions.forEach(session => {
+        session.sets.forEach(set => {
+            if (!set.targetZones || set.targetZones.length === 0) return;
+
+            set.targetZones.forEach(zone => {
+                if (!grouped[zone]) {
+                    grouped[zone] = { repsAttempted: 0, repsExecuted: 0 };
+                }
+                const repsPerZone = set.repsAttempted / set.targetZones.length;
+                const execPerZone = set.repsExecuted / set.targetZones.length;
+                grouped[zone].repsAttempted += repsPerZone;
+                grouped[zone].repsExecuted += execPerZone;
+            });
+        });
+    });
+
+    return Object.entries(grouped).map(([zone, data]) => ({
+        zone: zone as import('../types').TargetZone,
+        reps: Math.round(data.repsAttempted),
+        execution: data.repsAttempted > 0 ? Math.round((data.repsExecuted / data.repsAttempted) * 100) : 0,
+        topPlayers: [], // Not used in player view
+    }));
 };

@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { DataContext } from '../contexts/DataContext';
 import { Team, UserRole } from '../types';
+import { calculateExecutionPercentage, calculateHardHitPercentage, calculateStrikeoutPercentage } from '../utils/helpers';
 
 type InlineStatus = { type: 'success' | 'error'; message: string };
 type TeamEditState = { name: string; primaryColor: string | null };
@@ -42,12 +43,31 @@ export const ProfileTab: React.FC = () => {
     );
   }
 
-  const { updateProfile, updateTeamDetails, getTeamsForCoach } = data;
+  const { updateProfile, updateTeamDetails, getTeamsForCoach, getSessionsForPlayer } = data;
   const isCoach = currentUser.role === UserRole.Coach;
   const coachTeams = useMemo(
     () => (isCoach ? getTeamsForCoach(currentUser.id) : []),
     [getTeamsForCoach, currentUser.id, isCoach]
   );
+  const playerSessions = useMemo(
+    () => (currentUser.role === UserRole.Player ? getSessionsForPlayer(currentUser.id) : []),
+    [currentUser.id, currentUser.role, getSessionsForPlayer]
+  );
+  const playerSets = useMemo(
+    () => (currentUser.role === UserRole.Player ? playerSessions.flatMap((session) => session.sets) : []),
+    [currentUser.role, playerSessions]
+  );
+  const playerStats = useMemo(() => {
+    if (currentUser.role !== UserRole.Player) {
+      return { exec: 0, hardHit: 0, contact: 0, reps: 0 };
+    }
+    const exec = calculateExecutionPercentage(playerSets);
+    const hardHit = calculateHardHitPercentage(playerSets);
+    const strikeoutPercentage = calculateStrikeoutPercentage(playerSets);
+    const contact = Math.max(0, 100 - strikeoutPercentage);
+    const reps = playerSets.reduce((sum, set) => sum + (set.repsAttempted ?? 0), 0);
+    return { exec, hardHit, contact, reps };
+  }, [currentUser.role, playerSets]);
 
   const displayName = currentUser.name?.trim() || (isCoach ? 'Coach' : 'Player');
   const isNameDirty = nameInput.trim() !== (currentUser.name ?? '').trim();
@@ -179,9 +199,8 @@ export const ProfileTab: React.FC = () => {
                       type="button"
                       key={color}
                       onClick={() => setTeamEditState((prev) => (prev ? { ...prev, primaryColor: color } : prev))}
-                      className={`h-9 w-9 rounded-full border ${
-                        selected ? 'ring-2 ring-offset-2 ring-primary border-primary' : 'border-border'
-                      }`}
+                      className={`h-9 w-9 rounded-full border ${selected ? 'ring-2 ring-offset-2 ring-primary border-primary' : 'border-border'
+                        }`}
                       style={{ backgroundColor: color }}
                       aria-label={`Use ${color} as team color`}
                     />
@@ -190,11 +209,10 @@ export const ProfileTab: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setTeamEditState((prev) => (prev ? { ...prev, primaryColor: null } : prev))}
-                  className={`h-9 rounded-full border px-4 text-xs font-semibold ${
-                    teamEditState.primaryColor === null
-                      ? 'border-primary text-primary bg-primary/10'
-                      : 'border-border text-muted-foreground hover:text-foreground'
-                  }`}
+                  className={`h-9 rounded-full border px-4 text-xs font-semibold ${teamEditState.primaryColor === null
+                    ? 'border-primary text-primary bg-primary/10'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                    }`}
                 >
                   Default
                 </button>
@@ -202,11 +220,10 @@ export const ProfileTab: React.FC = () => {
             </div>
             {teamStatus && (
               <div
-                className={`rounded-lg border px-3 py-2 text-sm ${
-                  teamStatus.type === 'success'
-                    ? 'border-success/40 bg-success/10 text-success'
-                    : 'border-destructive/40 bg-destructive/10 text-destructive'
-                }`}
+                className={`rounded-lg border px-3 py-2 text-sm ${teamStatus.type === 'success'
+                  ? 'border-success/40 bg-success/10 text-success'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive'
+                  }`}
               >
                 {teamStatus.message}
               </div>
@@ -235,12 +252,17 @@ export const ProfileTab: React.FC = () => {
     );
   };
 
+  const profileHeading = isCoach ? 'Coach Profile' : 'Player Profile';
+  const profileDescription = isCoach
+    ? 'Fine-tune your display info and keep your teams up to date.'
+    : 'Review your skill ratings and see everything your coach sees about you.';
+
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-foreground">Coach Profile</h2>
+        <h2 className="text-2xl font-bold text-foreground">{profileHeading}</h2>
         <p className="text-sm text-muted-foreground">
-          Fine-tune your display info and keep your teams up to date.
+          {profileDescription}
         </p>
       </div>
       <div className="grid gap-6 md:grid-cols-2">
@@ -277,11 +299,10 @@ export const ProfileTab: React.FC = () => {
             />
             {nameStatus && (
               <div
-                className={`rounded-lg border px-3 py-2 text-sm ${
-                  nameStatus.type === 'success'
-                    ? 'border-success/40 bg-success/10 text-success'
-                    : 'border-destructive/40 bg-destructive/10 text-destructive'
-                }`}
+                className={`rounded-lg border px-3 py-2 text-sm ${nameStatus.type === 'success'
+                  ? 'border-success/40 bg-success/10 text-success'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive'
+                  }`}
               >
                 {nameStatus.message}
               </div>
@@ -311,6 +332,44 @@ export const ProfileTab: React.FC = () => {
           </div>
         )}
       </div>
+
+      {!isCoach && (
+        <section className="space-y-4">
+          <div>
+            <h3 className="text-xl font-semibold text-foreground">Skill Snapshot</h3>
+            <p className="text-sm text-muted-foreground">
+              Video-game style ratings are built from every session you log so you can see strengths at a glance.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Execution</p>
+              <p className="text-3xl font-bold text-foreground mt-1">{playerStats.exec}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Quality of reps</p>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Power</p>
+              <p className="text-3xl font-bold text-foreground mt-1">{playerStats.hardHit}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Hard-hit rate</p>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Contact</p>
+              <p className="text-3xl font-bold text-foreground mt-1">{playerStats.contact}%</p>
+              <p className="text-xs text-muted-foreground mt-1">Balls in play</p>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Reps</p>
+              <p className="text-3xl font-bold text-foreground mt-1">{playerStats.reps.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground mt-1">Lifetime logged</p>
+            </div>
+          </div>
+          {playerSessions.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center">
+              Log your first session to unlock personalized ratings.
+            </p>
+          )}
+        </section>
+      )}
 
       {isCoach ? (
         <section className="space-y-4">

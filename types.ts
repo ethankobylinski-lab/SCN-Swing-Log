@@ -90,7 +90,7 @@ export type TargetZone = 'Inside High' | 'Inside Middle' | 'Inside Low' | 'Middl
 export type PitchType = 'Fastball' | 'Curveball' | 'Slider' | 'Changeup' | 'Sinker';
 export type CountSituation = 'Ahead' | 'Even' | 'Behind';
 export type BaseRunner = '1B' | '2B' | '3B';
-export type GoalType = 'Execution %' | 'Hard Hit %' | 'No Strikeouts' | 'Total Reps';
+export type GoalType = 'Execution %' | 'Hard Hit %' | 'No Strikeouts' | 'Total Reps' | 'Strike %' | 'Velocity' | 'Command';
 export type DrillType = 'Tee Work' | 'Soft Toss' | 'Front Toss' | 'Throwing' | 'Live BP' | 'Machine';
 
 export interface Drill {
@@ -191,4 +191,262 @@ export interface TeamGoal {
   drillType?: DrillType;
   targetZones?: TargetZone[];
   pitchTypes?: PitchType[];
+}
+
+// --- Pitching Session Types ---
+
+export interface TeamSettings {
+  teamId: string;
+  restRequirementPerPitch: number; // hours per pitch; default 1.0
+}
+
+export interface PitchTypeModel {
+  id: string;
+  pitcherId: string;
+  name: string;
+  code: string;
+  colorHex: string;
+  isActive: boolean;
+}
+
+export interface PitchGoal {
+  pitchTypeId: string;
+  repsGoal?: number;
+  strikeGoalPct?: number;
+}
+
+export type PitchSessionType = 'command' | 'velo' | 'mix' | 'recovery' | 'flat' | 'live';
+
+export interface PitchSession {
+  id: string;
+  pitcherId: string;
+  teamId: string;
+  catcherId?: string;
+  date: string; // ISO date string
+  sessionName: string;
+  sessionType: PitchSessionType;
+  gameSituationEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  pitchGoals: PitchGoal[];
+  totalPitches: number;
+  sessionStartTime: string;
+  sessionEndTime?: string;
+  restHoursRequired?: number;
+  restEndTime?: string;
+  // Analytics metrics (computed and stored on session finalization)
+  analytics?: PitchSessionAnalytics;
+  // Detailed pitch records for this session
+  pitchRecords?: PitchRecord[];
+}
+
+export type ZoneId =
+  | 'Z11' | 'Z12' | 'Z13'
+  | 'Z21' | 'Z22' | 'Z23'
+  | 'Z31' | 'Z32' | 'Z33'
+  | 'EDGE_HIGH' | 'EDGE_LOW' | 'EDGE_GLOVE' | 'EDGE_ARM';
+
+export type PitchOutcome =
+  | 'ball'
+  | 'called_strike'
+  | 'swinging_strike'
+  | 'foul'
+  | 'in_play'
+  | 'hbp';
+
+export interface ZoneCell {
+  row: number;
+  col: number;
+}
+
+export interface PitchRecord {
+  id: string;
+  sessionId: string;
+  index: number;
+  batterSide: 'L' | 'R';
+  ballsBefore: number;
+  strikesBefore: number;
+  runnersOn: {
+    on1b: boolean;
+    on2b: boolean;
+    on3b: boolean;
+  };
+  outs: 0 | 1 | 2;
+  pitchTypeId: string;
+  targetZone: ZoneId;
+  targetXNorm?: number;
+  targetYNorm?: number;
+  actualZone: ZoneId;
+  actualXNorm?: number;
+  actualYNorm?: number;
+  velocityMph?: number;
+  outcome: PitchOutcome;
+  inPlayQuality?: 'weak' | 'medium' | 'hard';
+  missDistanceInches?: number;
+  createdAt: string;
+}
+
+export interface PitchEligibility {
+  status: 'green' | 'yellow' | 'red';
+  timeLeftHours: number;
+  restEndTime?: string;
+}
+
+// --- Pitching Analytics Types ---
+
+export interface MissPattern {
+  missUpPct: number;
+  missDownPct: number;
+  missArmSidePct: number;
+  missGloveSidePct: number;
+  avgMissDistance: number;
+}
+
+export interface SituationalMetrics {
+  firstPitchStrikePct: number;
+  behindInCountStrikePct: number;
+  behindInCountAccuracy: number;
+}
+
+export interface TrendMetrics {
+  earlyAccuracy: number; // first 10 pitches
+  lateAccuracy: number; // last 10 pitches
+}
+
+export interface PitchTypeMetrics {
+  pitchTypeId: string;
+  pitchTypeName: string;
+  count: number;
+  strikePct: number;
+  accuracyHitRate: number; // % perfect hits (actualZone == intendedZone)
+  accuracyProximityAvg: number; // average proximity score 0-1
+  accuracyInchesAvg?: number; // average miss distance in inches
+  accuracyInchesMedian?: number; // median miss distance in inches
+  accuracyInchesMax?: number; // max miss distance in inches
+}
+
+// ... (rest of file)
+
+
+
+
+export interface PitchSessionAnalytics {
+  // Core command metrics
+  strikePct: number;
+  accuracyHitRate: number; // % of pitches that hit intended zone exactly
+  accuracyProximityAvg: number; // average proximity score (0-1)
+
+  // Per pitch type metrics
+  pitchTypeMetrics: PitchTypeMetrics[];
+
+  // Miss patterns
+  missPattern: MissPattern;
+
+  // Situational metrics
+  situational: SituationalMetrics;
+
+  // Trend metrics
+  trend: TrendMetrics;
+
+  // Composite score (0-100)
+  commandScore: number;
+
+  // Auto-generated insights
+  insights: string[];
+}
+
+export interface ZoneHeatmapData {
+  zone: ZoneId;
+  intendedCount: number;
+  actualCount: number;
+  proximityAvg: number;
+}
+
+export interface SessionAnalyticsFilter {
+  dateRange?: { start: string; end: string };
+  pitchTypeIds?: string[];
+  sessionTypes?: PitchSessionType[];
+}
+
+// --- Pitch Simulation Types ---
+
+export interface PitchSimulationTemplate {
+  id: string;
+  teamId: string;
+  createdBy: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PitchSimulationStep {
+  id: string;
+  templateId: string;
+  orderIndex: number;
+  pitchTypeId: string;
+  intendedZone: ZoneId;
+  createdAt: string;
+}
+
+export interface PitchSimulationAssignment {
+  id: string;
+  templateId: string;
+  pitcherId?: string; // undefined = team-wide
+  teamId: string;
+  isRecurring: boolean;
+  recurringDays?: DayOfWeek[];
+  dueDate?: string; // ISO date string
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PitchSimulationRun {
+  id: string;
+  templateId: string;
+  pitcherId: string;
+  teamId: string;
+  startedAt: string;
+  completedAt?: string;
+  currentStepIndex: number;
+  totalSteps: number;
+  createdAt: string;
+}
+
+export interface PitchSimulationRunPitch {
+  id: string;
+  runId: string;
+  stepId: string;
+  pitchRecordId: string;
+  isStrike: boolean;
+  hitIntendedZone: boolean;
+  createdAt: string;
+}
+
+// Helper types for UI
+export interface SimulationStepWithDetails extends PitchSimulationStep {
+  pitchTypeName: string;
+  pitchTypeCode: string;
+  pitchTypeColor: string;
+}
+
+export interface SimulationRunSummary {
+  totalPitches: number;
+  strikes: number;
+  balls: number;
+  strikePct: number;
+  accuracyPct: number;
+  pitchTypeBreakdown: {
+    pitchTypeName: string;
+    pitchTypeCode: string;
+    count: number;
+    strikePct: number;
+    accuracyPct: number;
+  }[];
+}
+export interface StatusMessage {
+  type: 'success' | 'error';
+  message: string;
 }

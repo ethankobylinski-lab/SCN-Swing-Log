@@ -3,6 +3,7 @@ import { DataContext } from './contexts/DataContext';
 import { Login } from './components/Login';
 import { Spinner } from './components/Spinner';
 import { Onboarding } from './components/Onboarding';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { UserRole } from './types';
 
 const CoachView = lazy(async () => {
@@ -79,9 +80,39 @@ export const App: React.FC = () => {
   const renderView = () => {
     switch (currentUser.role) {
       case UserRole.Coach:
-        return <CoachView />;
+        return (
+          <ErrorBoundary
+            fallback={
+              <div className="min-h-screen flex items-center justify-center text-center p-4">
+                <div>
+                  <h2 className="text-xl font-bold text-red-600">Coach View Error</h2>
+                  <p className="text-muted-foreground mt-2">
+                    The coach view encountered an error. Try refreshing the page.
+                  </p>
+                </div>
+              </div>
+            }
+          >
+            <CoachView />
+          </ErrorBoundary>
+        );
       case UserRole.Player:
-        return <PlayerView />;
+        return (
+          <ErrorBoundary
+            fallback={
+              <div className="min-h-screen flex items-center justify-center text-center p-4">
+                <div>
+                  <h2 className="text-xl font-bold text-red-600">Player View Error</h2>
+                  <p className="text-muted-foreground mt-2">
+                    The player view encountered an error. Try refreshing the page.
+                  </p>
+                </div>
+              </div>
+            }
+          >
+            <PlayerView />
+          </ErrorBoundary>
+        );
       default:
         // This is a fallback for any unexpected user role.
         return (

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Session } from '../types';
-import { formatDate } from '../utils/helpers';
+import { formatDate, calculateExecutionPercentage } from '../utils/helpers';
 
 interface SessionDetailProps {
   session: Session;
@@ -46,15 +46,22 @@ export const SessionDetail: React.FC<SessionDetailProps> = ({
   const formatList = (items?: string[]) =>
     items && items.length > 0 ? items.join(', ') : '—';
 
+  const executionPct = calculateExecutionPercentage(session.sets);
+
   return (
     <div className="p-6 space-y-6 max-w-xl mx-auto">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Session</p>
           <h2 className="text-2xl font-bold text-foreground">{session.name}</h2>
-          <p className="text-sm text-muted-foreground">
-            {formatDate(session.date)} • {(session.type ?? 'hitting').toUpperCase()}
-          </p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-sm text-muted-foreground">
+              {formatDate(session.date)} • {(session.type ?? 'hitting').toUpperCase()}
+            </p>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+              {executionPct}% Execution
+            </span>
+          </div>
         </div>
         <button
           type="button"

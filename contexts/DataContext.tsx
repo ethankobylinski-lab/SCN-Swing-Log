@@ -1,11 +1,15 @@
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import type { Session as SupabaseSession } from '@supabase/supabase-js';
 import { supabase } from '../supabaseClient';
+import { useToast } from '../components/ToastProvider';
 import {
     User, UserRole, Team, Player, Drill, Session, DrillAssignment, DayOfWeek,
     PersonalGoal, PlayerProfile, TeamGoal, UserPreferences, SessionType,
     MembershipRole, TeamMember, SessionFeedback,
-    GoalType, DrillType, TargetZone, PitchType, SetResult
+    GoalType, DrillType, TargetZone, PitchType, SetResult,
+    PitchSession, PitchRecord, PitchTypeModel, TeamSettings, PitchEligibility, PitchGoal, ZoneId, PitchOutcome,
+    PitchSimulationTemplate, PitchSimulationStep, PitchSimulationAssignment,
+    PitchSimulationRun, PitchSimulationRunPitch, SimulationStepWithDetails, SimulationRunSummary
 } from '../types';
 import { generateTeamCode } from '../utils/helpers';
 import { MOCK_COACH, MOCK_PLAYERS, MOCK_TEAM, MOCK_DRILLS, MOCK_SESSIONS, MOCK_ASSIGNMENTS, MOCK_GOALS, MOCK_TEAM_GOALS } from '../utils/mockData';
@@ -88,8 +92,62 @@ interface IDataContext {
     recordSessionIntent?: { type: SessionType; id: number };
     setRecordSessionIntent: (intent?: { type: SessionType; id: number }) => void;
     getPitchingSessionsForPlayer: (playerId: string, teamId?: string) => Session[];
-    getPitchingSessionsForTeam: (teamId: string) => Session[];
+    getPitchingSessionsForTeam: (teamId: string) => Promise<PitchSession[]>;
     getPitchingStatsForSessions: (sessions: Session[]) => PitchingStatsSummary;
+    // --- Pitching Specific ---
+    getPitchTypesForPitcher: (pitcherId: string) => Promise<PitchTypeModel[]>;
+    addCustomPitchType: (pitcherId: string, name: string, code: string, colorHex: string) => Promise<void>;
+    createPitchSession: (
+        pitcherId: string,
+        teamId: string,
+        sessionName: string,
+        sessionType: PitchSession['sessionType'],
+        gameSituationEnabled: boolean,
+        pitchGoals: PitchGoal[],
+        catcherId?: string
+    ) => Promise<string>; // returns sessionId
+    recordPitch: (sessionId: string, pitch: Omit<PitchRecord, 'id' | 'sessionId' | 'createdAt'>) => Promise<void>;
+    updatePitch: (sessionId: string, pitchId: string, updates: Partial<PitchRecord>) => Promise<void>;
+    finalizePitchSession: (sessionId: string) => Promise<void>;
+    getPitchEligibility: (pitcherId: string, teamId: string) => Promise<PitchEligibility | null>;
+    getTeamSettings: (teamId: string) => Promise<TeamSettings | null>;
+    updateTeamSettings: (teamId: string, settings: Partial<TeamSettings>) => Promise<void>;
+    getPitchSession: (sessionId: string) => Promise<PitchSession | null>;
+    getAllPitchSessionsForPlayer: (pitcherId: string, teamId?: string) => Promise<PitchSession[]>;
+    getPitchHistory: (sessionId: string) => Promise<PitchRecord[]>;
+    // --- Pitch Simulations ---
+    // Coach functions
+    createSimulationTemplate: (
+        teamId: string,
+        name: string,
+        description: string,
+        steps: Array<{ pitchTypeId: string; intendedZone: ZoneId; reps: number }>
+    ) => Promise<string>; // returns templateId
+    updateSimulationTemplate: (templateId: string, name: string, description: string, steps: Array<{ pitchTypeId: string; intendedZone: ZoneId; reps: number }>) => Promise<void>;
+    getSimulationTemplatesForTeam: (teamId: string) => Promise<PitchSimulationTemplate[]>;
+    getSimulationSteps: (templateId: string) => Promise<SimulationStepWithDetails[]>;
+    assignSimulationToPitchers: (
+        templateId: string,
+        teamId: string,
+        pitcherIds: string[], // empty = team-wide
+        isRecurring: boolean,
+        recurringDays?: DayOfWeek[],
+        dueDate?: string
+    ) => Promise<void>;
+    deactivateSimulationTemplate: (templateId: string) => Promise<void>;
+    // Pitcher functions
+    getAssignedSimulations: (pitcherId: string, teamId: string) => Promise<PitchSimulationTemplate[]>;
+    startSimulationRun: (templateId: string, pitcherId: string, teamId: string) => Promise<string>; // returns runId
+    getActiveSimulationRun: (pitcherId: string) => Promise<PitchSimulationRun | null>;
+    recordSimulationPitch: (
+        runId: string,
+        stepId: string,
+        pitchRecordId: string,
+        isStrike: boolean,
+        hitIntendedZone: boolean
+    ) => Promise<void>;
+    advanceSimulationStep: (runId: string) => Promise<void>;
+    completeSimulationRun: (runId: string) => Promise<SimulationRunSummary>;
     // --- State Management ---
     activeTeam: Team | undefined;
     activeTeamId?: string;
@@ -513,7 +571,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             };
 
             const { data, error } = await supabase
-                .from<SupabaseUserRow>('users')
+                .from('users')
                 .select('*')
                 .eq('id', session.user.id)
                 .maybeSingle();
@@ -599,7 +657,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         const { data: upserted, error: upsertError } = await supabase
-            .from<SupabaseUserRow>('users')
+            .from('users')
             .upsert(payload, { onConflict: 'id' })
             .select('*')
             .single();
@@ -771,7 +829,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadTeams = async () => {
             const { data, error } = await supabase
-                .from<SupabaseTeamRow>('teams')
+                .from('teams')
                 .select('*')
                 .in('id', teamIds);
 
@@ -820,7 +878,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const backfillCoachTeams = async () => {
             try {
                 const { data, error } = await supabase
-                    .from<SupabaseTeamRow>('teams')
+                    .from('teams')
                     .select('*')
                     .eq('coach_id', currentUser.id);
 
@@ -894,7 +952,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadSessions = async () => {
             const { data, error } = await supabase
-                .from<SupabaseSessionRow>('sessions')
+                .from('sessions')
                 .select('*')
                 .eq('team_id', activeTeamId);
 
@@ -937,7 +995,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadPersonalSessions = async () => {
             const { data, error } = await supabase
-                .from<SupabaseSessionRow>('sessions')
+                .from('sessions')
                 .select('*')
                 .eq('player_id', currentUser.id);
 
@@ -982,7 +1040,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadPlayers = async () => {
             const { data, error } = await supabase
-                .from<SupabaseUserRow>('users')
+                .from('users')
                 .select('*')
                 .eq('role', UserRole.Player)
                 .contains('team_ids', [activeTeamId]);
@@ -1034,7 +1092,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const loaders = coachTeamIds.map(async (teamId) => {
                 // Query team_members for coaches (HeadCoach or AssistantCoach)
                 const { data: memberData, error: memberError } = await supabase
-                    .from<SupabaseTeamMemberRow>('team_members')
+                    .from('team_members')
                     .select('user_id')
                     .eq('team_id', teamId)
                     .in('role', ['HeadCoach', 'AssistantCoach'])
@@ -1051,7 +1109,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
                 // Fetch user details for these coaches
                 const { data: userData, error: userError } = await supabase
-                    .from<SupabaseUserRow>('users')
+                    .from('users')
                     .select('*')
                     .in('id', coachUserIds);
 
@@ -1106,7 +1164,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadDrills = async () => {
             const { data, error } = await supabase
-                .from<SupabaseDrillRow>('drills')
+                .from('drills')
                 .select('*')
                 .in('team_id', teamIdsForDrills);
 
@@ -1152,7 +1210,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadAssignments = async () => {
             const { data, error } = await supabase
-                .from<SupabaseAssignmentRow>('assignments')
+                .from('assignments')
                 .select('*')
                 .in('team_id', teamIdsForAssignments);
 
@@ -1192,7 +1250,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const loadGoals = async () => {
             if (currentUser.role === UserRole.Player) {
                 const { data, error } = await supabase
-                    .from<SupabasePersonalGoalRow>('personal_goals')
+                    .from('personal_goals')
                     .select('*')
                     .eq('player_id', currentUser.id);
 
@@ -1216,7 +1274,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
 
             const { data, error } = await supabase
-                .from<SupabasePersonalGoalRow>('personal_goals')
+                .from('personal_goals')
                 .select('*')
                 .eq('team_id', activeTeamId);
 
@@ -1262,7 +1320,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         const loadTeamGoals = async () => {
             const { data, error } = await supabase
-                .from<SupabaseTeamGoalRow>('team_goals')
+                .from('team_goals')
                 .select('*')
                 .in('team_id', teamIdsForGoals);
 
@@ -1304,7 +1362,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         teamId: string,
     ): Promise<{ playerCode: string | null; coachCode: string | null }> => {
         const { data, error } = await supabase
-            .from<{ code: string; role: 'player' | 'coach' }>('join_codes')
+            .from('join_codes')
             .select('code, role')
             .eq('team_id', teamId);
         if (error) {
@@ -1328,15 +1386,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const basePrefs: UserPreferences = { ...(currentUser.preferences ?? {}) };
-        (Object.entries(prefs) as [keyof UserPreferences, UserPreferences[keyof UserPreferences]][]).forEach(
-            ([key, value]) => {
-                if (value === undefined) {
-                    delete basePrefs[key];
-                } else {
-                    basePrefs[key] = value;
-                }
-            },
-        );
+        if (Object.prototype.hasOwnProperty.call(prefs, 'defaultTeamId')) {
+            const value = prefs.defaultTeamId;
+            if (value === undefined) {
+                delete basePrefs.defaultTeamId;
+            } else {
+                basePrefs.defaultTeamId = value;
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(prefs, 'showAdvancedAnalytics')) {
+            const value = prefs.showAdvancedAnalytics;
+            if (value === undefined) {
+                delete basePrefs.showAdvancedAnalytics;
+            } else {
+                basePrefs.showAdvancedAnalytics = value;
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(prefs, 'darkMode')) {
+            const value = prefs.darkMode;
+            if (value === undefined) {
+                delete basePrefs.darkMode;
+            } else {
+                basePrefs.darkMode = value;
+            }
+        }
 
         const { error } = await supabase.from('users').update({ preferences: basePrefs }).eq('id', currentUser.id);
         if (error) {
@@ -1388,7 +1461,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const { data, error } = await supabase
-            .from<SupabaseUserRow>('users')
+            .from('users')
             .update(payload)
             .eq('id', currentUser.id)
             .select('*')
@@ -1548,7 +1621,65 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         return sessionsForPlayer.filter((session) => session.teamId === teamId);
     };
-    const getPitchingSessionsForTeam = (teamId: string) => teamSessions.filter((session) => session.teamId === teamId && session.type === 'pitching');
+    const getPitchingSessionsForTeam = async (teamId: string): Promise<PitchSession[]> => {
+        if (isDemoMode) {
+            // Return mock pitching sessions if available, or filter from sessions if we were using that for demo
+            // For now, let's return an empty array or mock data if we had it.
+            // Assuming we might want to mock this later, but for now:
+            return [];
+        }
+
+        const { data, error } = await supabase
+            .from('pitch_sessions')
+            .select(`
+                *,
+                pitch_records (*)
+            `)
+            .eq('team_id', teamId)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching team pitching sessions:', error);
+            return [];
+        }
+
+        return data.map(row => ({
+            id: row.id,
+            pitcherId: row.pitcher_id,
+            teamId: row.team_id,
+            catcherId: row.catcher_id,
+            date: row.created_at, // Use created_at as date since there's no separate date column
+            sessionName: row.session_name,
+            sessionType: row.session_type,
+            gameSituationEnabled: row.game_situation_enabled,
+            pitchGoals: row.pitch_goals,
+            totalPitches: row.total_pitches,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            sessionStartTime: row.session_start_time,
+            pitchRecords: (row.pitch_records || []).map((pr: any) => ({
+                id: pr.id,
+                sessionId: pr.session_id,
+                index: pr.index,
+                batterSide: pr.batter_side,
+                ballsBefore: pr.balls_before,
+                strikesBefore: pr.strikes_before,
+                runnersOn: pr.runners_on,
+                outs: pr.outs,
+                pitchTypeId: pr.pitch_type_id,
+                targetZone: pr.target_zone,
+                targetXNorm: pr.target_x_norm,
+                targetYNorm: pr.target_y_norm,
+                actualZone: pr.actual_zone,
+                actualXNorm: pr.actual_x_norm,
+                actualYNorm: pr.actual_y_norm,
+                velocityMph: pr.velocity_mph,
+                outcome: pr.outcome,
+                inPlayQuality: pr.in_play_quality,
+                createdAt: pr.created_at
+            }))
+        }));
+    };
     const getPitchingStatsForSessions = (sessions: Session[]): PitchingStatsSummary => {
         if (sessions.length === 0) {
             return {
@@ -1672,7 +1803,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         const { data, error } = await supabase
-            .from<SupabaseDrillRow>('drills')
+            .from('drills')
             .insert(payload)
             .select('*')
             .single();
@@ -1726,7 +1857,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         const { data, error } = await supabase
-            .from<SupabaseAssignmentRow>('assignments')
+            .from('assignments')
             .insert(payload)
             .select('*')
             .single();
@@ -1793,7 +1924,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             sets: sessionDetails.sets,
             feedback: sessionDetails.feedback ?? null,
             reflection: sessionDetails.reflection ?? null,
-            coach_feedback: sessionDetails.coachFeedback ?? null,
+            coach_feedback: null,
             date: timestamp,
             type: sessionType,
             created_at: timestamp,
@@ -1803,7 +1934,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         const { data, error } = await supabase
-            .from<SupabaseSessionRow>('sessions')
+            .from('sessions')
             .insert(payload)
             .select('*')
             .single();
@@ -1881,7 +2012,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const { data, error } = await supabase
-            .from<SupabaseSessionRow>('sessions')
+            .from('sessions')
             .update(payload)
             .eq('id', sessionId)
             .select('*')
@@ -2045,7 +2176,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const { data, error } = await supabase
-            .from<SupabaseTeamRow>('teams')
+            .from('teams')
             .update(payload)
             .eq('id', teamId)
             .select('*')
@@ -2122,7 +2253,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         const { data, error } = await supabase
-            .from<SupabasePersonalGoalRow>('personal_goals')
+            .from('personal_goals')
             .insert(payload)
             .select('*')
             .single();
@@ -2190,7 +2321,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         const { data, error } = await supabase
-            .from<SupabasePersonalGoalRow>('personal_goals')
+            .from('personal_goals')
             .insert(goalPayload)
             .select('*')
             .single();
@@ -2282,7 +2413,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const { data, error } = await supabase
-            .from<SupabasePersonalGoalRow>('personal_goals')
+            .from('personal_goals')
             .update(payload)
             .eq('id', goalId)
             .select('*')
@@ -2339,7 +2470,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         const { data, error } = await supabase
-            .from<SupabaseTeamGoalRow>('team_goals')
+            .from('team_goals')
             .insert(payload)
             .select('*')
             .single();
@@ -2418,7 +2549,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             throw new Error('Only coaches can set coach feedback.');
         }
         const { data, error } = await supabase
-            .from<SupabaseSessionRow>('sessions')
+            .from('sessions')
             .update({ coach_feedback: coachFeedback, updated_at: new Date().toISOString() })
             .eq('id', sessionId)
             .select('*')
@@ -2455,7 +2586,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         const { data, error } = await supabase
-            .from<SupabaseSessionFeedbackRow>('session_feedback')
+            .from('session_feedback')
             .insert({
                 session_id: sessionId,
                 team_id: teamId,
@@ -2499,7 +2630,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // The RPC will update team_members and teams.coach_id
         // We should reload the affected data
         const { data: membersData } = await supabase
-            .from<SupabaseTeamMemberRow>('team_members')
+            .from('team_members')
             .select('*')
             .eq('team_id', teamId)
             .eq('status', 'active');
@@ -2514,7 +2645,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // Reload the team to get updated coach_id
         const { data: teamData } = await supabase
-            .from<SupabaseTeamRow>('teams')
+            .from('teams')
             .select('*')
             .eq('id', teamId)
             .single();
@@ -2523,6 +2654,986 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const updatedTeam = mapTeamRow(teamData);
             setTeams(prev => prev.map(t => t.id === teamId ? updatedTeam : t));
         }
+    };
+
+    // --- Pitching Implementation ---
+
+    const getPitchTypesForPitcher = async (pitcherId: string): Promise<PitchTypeModel[]> => {
+        if (isDemoMode) {
+            return [
+                { id: 'pt-1', pitcherId: 'player-1', name: 'Fastball', code: 'FB', colorHex: '#ef4444', isActive: true },
+                { id: 'pt-2', pitcherId: 'player-1', name: 'Changeup', code: 'CH', colorHex: '#22c55e', isActive: true },
+                { id: 'pt-3', pitcherId: 'player-1', name: 'Slider', code: 'SL', colorHex: '#eab308', isActive: true },
+                { id: 'pt-4', pitcherId: 'player-1', name: 'Curveball', code: 'CB', colorHex: '#3b82f6', isActive: true },
+            ];
+        }
+
+        const { data, error } = await supabase
+            .from('pitch_types')
+            .select('*')
+            .eq('pitcher_id', pitcherId)
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('Error fetching pitch types:', error);
+            return [];
+        }
+
+        return data.map(row => ({
+            id: row.id,
+            pitcherId: row.pitcher_id,
+            name: row.name,
+            code: row.code,
+            colorHex: row.color_hex,
+            isActive: row.is_active
+        }));
+    };
+
+    const addCustomPitchType = async (pitcherId: string, name: string, code: string, colorHex: string) => {
+        const { error } = await supabase
+            .from('pitch_types')
+            .insert({
+                pitcher_id: pitcherId,
+                name,
+                code,
+                color_hex: colorHex,
+                is_active: true
+            });
+
+        if (error) throw new Error(error.message);
+    };
+
+    const createPitchSession = async (
+        pitcherId: string,
+        teamId: string,
+        sessionName: string,
+        sessionType: PitchSession['sessionType'],
+        gameSituationEnabled: boolean,
+        pitchGoals: PitchGoal[],
+        catcherId?: string
+    ): Promise<string> => {
+        if (isDemoMode) {
+            return `mock-session-${Date.now()}`;
+        }
+
+        const { data, error } = await supabase
+            .from('pitch_sessions')
+            .insert({
+                pitcher_id: pitcherId,
+                team_id: teamId,
+                catcher_id: catcherId,
+                session_name: sessionName,
+                session_type: sessionType,
+                game_situation_enabled: gameSituationEnabled,
+                pitch_goals: pitchGoals,
+                total_pitches: 0
+            })
+            .select('id')
+            .single();
+
+        if (error) throw new Error(error.message);
+        return data.id;
+    };
+
+    const recordPitch = async (sessionId: string, pitch: Omit<PitchRecord, 'id' | 'sessionId' | 'createdAt'>) => {
+        if (isDemoMode) {
+            return { success: true, id: `mock-pitch-${Date.now()}` };
+        }
+
+        try {
+            // Use atomic RPC function for transaction safety
+            const { data, error } = await supabase.rpc('record_pitch_atomic', {
+                p_session_id: sessionId,
+                p_index: pitch.index,
+                p_batter_side: pitch.batterSide,
+                p_balls_before: pitch.ballsBefore,
+                p_strikes_before: pitch.strikesBefore,
+                p_runners_on: pitch.runnersOn,
+                p_outs: pitch.outs,
+                p_pitch_type_id: pitch.pitchTypeId,
+                p_target_zone: pitch.targetZone,
+                p_target_x_norm: pitch.targetXNorm ?? null,
+                p_target_y_norm: pitch.targetYNorm ?? null,
+                p_actual_zone: pitch.actualZone,
+                p_actual_x_norm: pitch.actualXNorm ?? null,
+                p_actual_y_norm: pitch.actualYNorm ?? null,
+                p_velocity_mph: pitch.velocityMph ?? null,
+                p_outcome: pitch.outcome,
+                p_in_play_quality: pitch.inPlayQuality ?? null
+            });
+
+            if (error) {
+                console.error('Error recording pitch:', error);
+                throw new Error(error.message);
+            }
+
+            if (!data || !data.success) {
+                throw new Error('Failed to record pitch');
+            }
+
+            // Success - pitch recorded atomically
+            return data;
+        } catch (error) {
+            console.error('recordPitch error:', error);
+            throw error;
+        }
+    };
+
+    const updatePitch = async (sessionId: string, pitchId: string, updates: Partial<PitchRecord>) => {
+        if (isDemoMode) return;
+
+        const payload: any = {};
+        if (updates.batterSide) payload.batter_side = updates.batterSide;
+        if (updates.ballsBefore !== undefined) payload.balls_before = updates.ballsBefore;
+        if (updates.strikesBefore !== undefined) payload.strikes_before = updates.strikesBefore;
+        if (updates.runnersOn) payload.runners_on = updates.runnersOn;
+        if (updates.outs !== undefined) payload.outs = updates.outs;
+        if (updates.pitchTypeId) payload.pitch_type_id = updates.pitchTypeId;
+        if (updates.targetZone) payload.target_zone = updates.targetZone;
+        if (updates.targetXNorm !== undefined) payload.target_x_norm = updates.targetXNorm;
+        if (updates.targetYNorm !== undefined) payload.target_y_norm = updates.targetYNorm;
+        if (updates.actualZone) payload.actual_zone = updates.actualZone;
+        if (updates.actualXNorm !== undefined) payload.actual_x_norm = updates.actualXNorm;
+        if (updates.actualYNorm !== undefined) payload.actual_y_norm = updates.actualYNorm;
+        if (updates.velocityMph !== undefined) payload.velocity_mph = updates.velocityMph;
+        if (updates.outcome) payload.outcome = updates.outcome;
+        if (updates.inPlayQuality) payload.in_play_quality = updates.inPlayQuality;
+
+        const { error } = await supabase
+            .from('pitch_records')
+            .update(payload)
+            .eq('id', pitchId)
+            .eq('session_id', sessionId);
+
+        if (error) throw new Error(error.message);
+    };
+
+    const getTeamSettings = async (teamId: string): Promise<TeamSettings | null> => {
+        const { data, error } = await supabase
+            .from('team_settings')
+            .select('*')
+            .eq('team_id', teamId)
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error fetching team settings:', error);
+            return null;
+        }
+
+        if (!data) return { teamId, restRequirementPerPitch: 1.0 }; // Default
+
+        return {
+            teamId: data.team_id,
+            restRequirementPerPitch: data.rest_requirement_per_pitch
+        };
+    };
+
+    const updateTeamSettings = async (teamId: string, settings: Partial<TeamSettings>) => {
+        const { error } = await supabase
+            .from('team_settings')
+            .upsert({
+                team_id: teamId,
+                rest_requirement_per_pitch: settings.restRequirementPerPitch ?? 1.0
+            });
+
+        if (error) throw new Error(error.message);
+    };
+
+    const finalizePitchSession = async (sessionId: string) => {
+        if (isDemoMode) return;
+
+        // 1. Get all pitch records for analytics
+        const { data: pitchRecords, error: recordsError } = await supabase
+            .from('pitch_records')
+            .select('*')
+            .eq('session_id', sessionId)
+            .order('index', { ascending: true });
+
+        if (recordsError) throw new Error(recordsError.message);
+        const totalPitches = pitchRecords?.length || 0;
+
+        // 2. If 0 pitches, delete the session and return
+        if (totalPitches === 0) {
+            const { error: deleteError } = await supabase
+                .from('pitch_sessions')
+                .delete()
+                .eq('id', sessionId);
+
+            if (deleteError) {
+                console.error('Error deleting empty session:', deleteError);
+                throw new Error('Failed to delete empty session');
+            }
+            return;
+        }
+
+        // 3. Get session to find teamId and pitcherId
+        const { data: sessionData, error: sessionError } = await supabase
+            .from('pitch_sessions')
+            .select('team_id, pitcher_id')
+            .eq('id', sessionId)
+            .single();
+
+        if (sessionError) throw new Error(sessionError.message);
+
+        // 4. Get team settings for rest calculation
+        const settings = await getTeamSettings(sessionData.team_id);
+        const restRate = settings?.restRequirementPerPitch ?? 1.0;
+
+        // 5. Calculate rest
+        const restHours = totalPitches * restRate;
+        const endTime = new Date();
+        const restEndTime = new Date(endTime.getTime() + restHours * 60 * 60 * 1000);
+
+        // 6. Get pitch types for analytics
+        const pitchTypes = await getPitchTypesForPitcher(sessionData.pitcher_id);
+
+        // 7. Map pitch records to PitchRecord type
+        const mappedPitches: PitchRecord[] = (pitchRecords || []).map(record => ({
+            id: record.id,
+            sessionId: record.session_id,
+            index: record.index,
+            batterSide: record.batter_side,
+            ballsBefore: record.balls_before,
+            strikesBefore: record.strikes_before,
+            runnersOn: record.runners_on,
+            outs: record.outs,
+            pitchTypeId: record.pitch_type_id,
+            targetZone: record.target_zone,
+            targetXNorm: record.target_x_norm,
+            targetYNorm: record.target_y_norm,
+            actualZone: record.actual_zone,
+            actualXNorm: record.actual_x_norm,
+            actualYNorm: record.actual_y_norm,
+            velocityMph: record.velocity_mph,
+            outcome: record.outcome,
+            inPlayQuality: record.in_play_quality,
+            createdAt: record.created_at
+        }));
+
+        // 8. Compute analytics
+        const { calculatePitchSessionAnalytics } = await import('../utils/pitchAnalytics');
+        const analytics = calculatePitchSessionAnalytics(mappedPitches, pitchTypes);
+
+        // 9. Update session with all computed data
+        const { error: updateError } = await supabase
+            .from('pitch_sessions')
+            .update({
+                session_end_time: endTime.toISOString(),
+                total_pitches: totalPitches,
+                rest_hours_required: restHours,
+                rest_end_time: restEndTime.toISOString(),
+                analytics: analytics
+            })
+            .eq('id', sessionId);
+
+        if (updateError) throw new Error(updateError.message);
+    };
+
+
+    const getPitchEligibility = async (pitcherId: string, teamId: string): Promise<PitchEligibility | null> => {
+        if (isDemoMode) {
+            return { status: 'green', timeLeftHours: 0 };
+        }
+
+        // Find latest session with a rest_end_time
+        const { data, error } = await supabase
+            .from('pitch_sessions')
+            .select('rest_end_time')
+            .eq('pitcher_id', pitcherId)
+            .eq('team_id', teamId)
+            .not('rest_end_time', 'is', null)
+            .order('rest_end_time', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error checking eligibility:', error);
+            return null;
+        }
+
+        if (!data || !data.rest_end_time) {
+            return { status: 'green', timeLeftHours: 0 };
+        }
+
+        const now = new Date();
+        const restEnd = new Date(data.rest_end_time);
+        const diffMs = restEnd.getTime() - now.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        if (diffHours <= 0) {
+            return { status: 'green', timeLeftHours: 0, restEndTime: data.rest_end_time };
+        } else if (diffHours <= 15) {
+            return { status: 'yellow', timeLeftHours: diffHours, restEndTime: data.rest_end_time };
+        } else {
+            return { status: 'red', timeLeftHours: diffHours, restEndTime: data.rest_end_time };
+        }
+    };
+
+    const getPitchSession = async (sessionId: string): Promise<PitchSession | null> => {
+        if (isDemoMode) {
+            const mockSession: PitchSession = {
+                id: sessionId,
+                pitcherId: 'player-1',
+                teamId: 'team-1',
+                date: new Date().toISOString(),
+                sessionName: 'Mock Bullpen Session',
+                sessionType: 'mix',
+                gameSituationEnabled: false,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                pitchGoals: [],
+                totalPitches: 0,
+                sessionStartTime: new Date().toISOString(),
+                restHoursRequired: 24,
+            };
+            return mockSession;
+        }
+
+        const { data, error } = await supabase
+            .from('pitch_sessions')
+            .select('*')
+            .eq('id', sessionId)
+            .single();
+
+        if (error || !data) return null;
+
+        return {
+            id: data.id,
+            pitcherId: data.pitcher_id,
+            teamId: data.team_id,
+            catcherId: data.catcher_id,
+            date: data.created_at, // Assuming 'created_at' can serve as 'date'
+            sessionName: data.session_name,
+            sessionType: data.session_type,
+            gameSituationEnabled: data.game_situation_enabled,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+            pitchGoals: data.pitch_goals,
+            totalPitches: data.total_pitches,
+            sessionStartTime: data.session_start_time,
+            sessionEndTime: data.session_end_time,
+            restHoursRequired: data.rest_hours_required,
+            restEndTime: data.rest_end_time,
+            analytics: data.analytics || undefined
+        };
+    };
+
+    const getAllPitchSessionsForPlayer = async (pitcherId: string, teamId?: string): Promise<PitchSession[]> => {
+        if (isDemoMode) return [];
+
+        let query = supabase
+            .from('pitch_sessions')
+            .select(`
+                *,
+                pitch_records (*)
+            `)
+            .eq('pitcher_id', pitcherId);
+
+        if (teamId) {
+            query = query.eq('team_id', teamId);
+        }
+
+        const { data, error } = await query.order('session_start_time', { ascending: false });
+
+        if (error || !data) {
+            console.error('Error fetching pitch sessions:', error);
+            return [];
+        }
+
+        // Filter out 0-pitch sessions and map
+        return data
+            .filter(d => d.total_pitches > 0)
+            .map(d => ({
+                id: d.id,
+                pitcherId: d.pitcher_id,
+                teamId: d.team_id,
+                catcherId: d.catcher_id,
+                date: d.created_at,
+                sessionName: d.session_name,
+                sessionType: d.session_type,
+                gameSituationEnabled: d.game_situation_enabled,
+                createdAt: d.created_at,
+                updatedAt: d.updated_at,
+                pitchGoals: d.pitch_goals,
+                totalPitches: d.total_pitches,
+                sessionStartTime: d.session_start_time,
+                sessionEndTime: d.session_end_time,
+                restHoursRequired: d.rest_hours_required,
+                restEndTime: d.rest_end_time,
+                analytics: d.analytics || undefined,
+                pitchRecords: (d.pitch_records || []).map((pr: any) => ({
+                    id: pr.id,
+                    sessionId: pr.session_id,
+                    index: pr.index,
+                    batterSide: pr.batter_side,
+                    ballsBefore: pr.balls_before,
+                    strikesBefore: pr.strikes_before,
+                    runnersOn: pr.runners_on,
+                    outs: pr.outs,
+                    pitchTypeId: pr.pitch_type_id,
+                    targetZone: pr.target_zone,
+                    targetXNorm: pr.target_x_norm,
+                    targetYNorm: pr.target_y_norm,
+                    actualZone: pr.actual_zone,
+                    actualXNorm: pr.actual_x_norm,
+                    actualYNorm: pr.actual_y_norm,
+                    velocityMph: pr.velocity_mph,
+                    outcome: pr.outcome,
+                    inPlayQuality: pr.in_play_quality,
+                    createdAt: pr.created_at
+                }))
+            }));
+    };
+
+    const getPitchHistory = async (sessionId: string): Promise<PitchRecord[]> => {
+        if (isDemoMode) return [];
+
+        const { data, error } = await supabase
+            .from('pitch_records')
+            .select('*')
+            .eq('session_id', sessionId)
+            .order('index', { ascending: true });
+
+        if (error) {
+            console.error('Error fetching pitch history:', error);
+            return [];
+        }
+
+        return data.map(row => ({
+            id: row.id,
+            sessionId: row.session_id,
+            index: row.index,
+            batterSide: row.batter_side,
+            ballsBefore: row.balls_before,
+            strikesBefore: row.strikes_before,
+            runnersOn: row.runners_on,
+            outs: row.outs,
+            pitchTypeId: row.pitch_type_id,
+            targetZone: row.target_zone,
+            targetXNorm: row.target_x_norm,
+            targetYNorm: row.target_y_norm,
+            actualZone: row.actual_zone,
+            actualXNorm: row.actual_x_norm,
+            actualYNorm: row.actual_y_norm,
+            velocityMph: row.velocity_mph,
+            outcome: row.outcome,
+            inPlayQuality: row.in_play_quality,
+            createdAt: row.created_at
+        }));
+    };
+
+    // =========================================================================
+    // Pitch Simulation Functions
+    // =========================================================================
+
+    /**
+     * Coach: Create a new simulation template with steps
+     * Steps array contains { pitchTypeId, intendedZone, reps }
+     * Reps are flattened into individual step records with sequential order_index
+     */
+    const createSimulationTemplate = async (
+        teamId: string,
+        name: string,
+        description: string,
+        steps: Array<{ pitchTypeId: string; intendedZone: ZoneId; reps: number }>
+    ): Promise<string> => {
+        if (!currentUser || currentUser.role !== UserRole.Coach) {
+            throw new Error('Only coaches can create simulation templates');
+        }
+
+        ensureCoachAccess(teamId);
+
+        // 1. Create template
+        const { data: template, error: templateError } = await supabase
+            .from('pitch_simulation_templates')
+            .insert({
+                team_id: teamId,
+                created_by: currentUser.id,
+                name,
+                description: description || null,
+                is_active: true
+            })
+            .select('id')
+            .single();
+
+        if (templateError) throw new Error(templateError.message);
+
+        // 2. Flatten steps with reps into individual step records
+        const flattenedSteps: Array<{
+            template_id: string;
+            order_index: number;
+            pitch_type_id: string;
+            intended_zone: string;
+        }> = [];
+
+        let orderIndex = 0;
+        for (const step of steps) {
+            for (let i = 0; i < step.reps; i++) {
+                flattenedSteps.push({
+                    template_id: template.id,
+                    order_index: orderIndex++,
+                    pitch_type_id: step.pitchTypeId,
+                    intended_zone: step.intendedZone
+                });
+            }
+        }
+
+        // 3. Insert all steps
+        const { error: stepsError } = await supabase
+            .from('pitch_simulation_steps')
+            .insert(flattenedSteps);
+
+        if (stepsError) throw new Error(stepsError.message);
+
+        return template.id;
+    };
+
+    /**
+     * Coach: Update an existing simulation template
+     * Replaces template name/description and all steps
+     */
+    const updateSimulationTemplate = async (
+        templateId: string,
+        name: string,
+        description: string,
+        steps: Array<{ pitchTypeId: string; intendedZone: ZoneId; reps: number }>
+    ): Promise<void> => {
+        if (!currentUser || currentUser.role !== UserRole.Coach) {
+            throw new Error('Only coaches can update simulation templates');
+        }
+
+        // 1. Update template metadata
+        const { error: updateError } = await supabase
+            .from('pitch_simulation_templates')
+            .update({
+                name,
+                description: description || null,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', templateId);
+
+        if (updateError) throw new Error(updateError.message);
+
+        // 2. Delete existing steps
+        const { error: deleteError } = await supabase
+            .from('pitch_simulation_steps')
+            .delete()
+            .eq('template_id', templateId);
+
+        if (deleteError) throw new Error(deleteError.message);
+
+        // 3. Insert new steps (flattened)
+        const flattenedSteps: Array<{
+            template_id: string;
+            order_index: number;
+            pitch_type_id: string;
+            intended_zone: string;
+        }> = [];
+
+        let orderIndex = 0;
+        for (const step of steps) {
+            for (let i = 0; i < step.reps; i++) {
+                flattenedSteps.push({
+                    template_id: templateId,
+                    order_index: orderIndex++,
+                    pitch_type_id: step.pitchTypeId,
+                    intended_zone: step.intendedZone
+                });
+            }
+        }
+
+        if (flattenedSteps.length > 0) {
+            const { error: stepsError } = await supabase
+                .from('pitch_simulation_steps')
+                .insert(flattenedSteps);
+
+            if (stepsError) throw new Error(stepsError.message);
+        }
+    };
+
+    /**
+     * Coach: Get all templates for a team
+     */
+    const getSimulationTemplatesForTeam = async (teamId: string): Promise<PitchSimulationTemplate[]> => {
+        if (!currentUser) throw new Error('Must be signed in');
+
+        const { data, error } = await supabase
+            .from('pitch_simulation_templates')
+            .select('*')
+            .eq('team_id', teamId)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching templates:', error);
+            return [];
+        }
+
+        return data.map(row => ({
+            id: row.id,
+            teamId: row.team_id,
+            createdBy: row.created_by,
+            name: row.name,
+            description: row.description || undefined,
+            isActive: row.is_active,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        }));
+    };
+
+    /**
+     * Get simulation steps with pitch type details for a template
+     */
+    const getSimulationSteps = async (templateId: string): Promise<SimulationStepWithDetails[]> => {
+        if (!currentUser) throw new Error('Must be signed in');
+
+        const { data, error } = await supabase
+            .from('pitch_simulation_steps')
+            .select(`
+                *,
+                pitch_types (
+                    name,
+                    code,
+                    color_hex
+                )
+            `)
+            .eq('template_id', templateId)
+            .order('order_index', { ascending: true });
+
+        if (error) {
+            console.error('Error fetching steps:', error);
+            return [];
+        }
+
+        return data.map(row => ({
+            id: row.id,
+            templateId: row.template_id,
+            orderIndex: row.order_index,
+            pitchTypeId: row.pitch_type_id,
+            intendedZone: row.intended_zone as ZoneId,
+            createdAt: row.created_at,
+            pitchTypeName: row.pitch_types?.name || 'Unknown',
+            pitchTypeCode: row.pitch_types?.code || '??',
+            pitchTypeColor: row.pitch_types?.color_hex || '#999999'
+        }));
+    };
+
+    /**
+     * Coach: Assign a template to pitcher(s) with scheduling
+     */
+    const assignSimulationToPitchers = async (
+        templateId: string,
+        teamId: string,
+        pitcherIds: string[],
+        isRecurring: boolean,
+        recurringDays?: DayOfWeek[],
+        dueDate?: string
+    ): Promise<void> => {
+        if (!currentUser || currentUser.role !== UserRole.Coach) {
+            throw new Error('Only coaches can assign simulations');
+        }
+
+        ensureCoachAccess(teamId);
+
+        // If pitcherIds is empty, create a single team-wide assignment
+        const assignments = pitcherIds.length > 0
+            ? pitcherIds.map(pitcherId => ({
+                template_id: templateId,
+                pitcher_id: pitcherId,
+                team_id: teamId,
+                is_recurring: isRecurring,
+                recurring_days: recurringDays || null,
+                due_date: dueDate || null,
+                is_active: true
+            }))
+            : [{
+                template_id: templateId,
+                pitcher_id: null, // team-wide
+                team_id: teamId,
+                is_recurring: isRecurring,
+                recurring_days: recurringDays || null,
+                due_date: dueDate || null,
+                is_active: true
+            }];
+
+        const { error } = await supabase
+            .from('pitch_simulation_assignments')
+            .insert(assignments);
+
+        if (error) throw new Error(error.message);
+    };
+
+    /**
+     * Coach: Deactivate a template
+     */
+    const deactivateSimulationTemplate = async (templateId: string): Promise<void> => {
+        if (!currentUser || currentUser.role !== UserRole.Coach) {
+            throw new Error('Only coaches can deactivate templates');
+        }
+
+        const { error } = await supabase
+            .from('pitch_simulation_templates')
+            .update({ is_active: false })
+            .eq('id', templateId);
+
+        if (error) throw new Error(error.message);
+    };
+
+    /**
+     * Pitcher: Get assigned simulations for a pitcher
+     */
+    const getAssignedSimulations = async (pitcherId: string, teamId: string): Promise<PitchSimulationTemplate[]> => {
+        if (!currentUser) throw new Error('Must be signed in');
+
+        // Get assignments for this pitcher
+        const { data: assignments, error: assignError } = await supabase
+            .from('pitch_simulation_assignments')
+            .select('template_id')
+            .eq('team_id', teamId)
+            .or(`pitcher_id.eq.${pitcherId},pitcher_id.is.null`)
+            .eq('is_active', true);
+
+        if (assignError || !assignments || assignments.length === 0) {
+            return [];
+        }
+
+        const templateIds = assignments.map(a => a.template_id);
+
+        // Get template details
+        const { data, error } = await supabase
+            .from('pitch_simulation_templates')
+            .select('*')
+            .in('id', templateIds)
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('Error fetching assigned simulations:', error);
+            return [];
+        }
+
+        return data.map(row => ({
+            id: row.id,
+            teamId: row.team_id,
+            createdBy: row.created_by,
+            name: row.name,
+            description: row.description || undefined,
+            isActive: row.is_active,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
+        }));
+    };
+
+    /**
+     * Pitcher: Start a new simulation run
+     */
+    const startSimulationRun = async (templateId: string, pitcherId: string, teamId: string): Promise<string> => {
+        if (!currentUser || currentUser.id !== pitcherId) {
+            throw new Error('Can only start runs for yourself');
+        }
+
+        // Count steps in template
+        const { count, error: countError } = await supabase
+            .from('pitch_simulation_steps')
+            .select('*', { count: 'exact', head: true })
+            .eq('template_id', templateId);
+
+        if (countError) throw new Error(countError.message);
+
+        const totalSteps = count || 0;
+        if (totalSteps === 0) {
+            throw new Error('Template has no steps');
+        }
+
+        // Create run
+        const { data, error } = await supabase
+            .from('pitch_simulation_runs')
+            .insert({
+                template_id: templateId,
+                pitcher_id: pitcherId,
+                team_id: teamId,
+                current_step_index: 0,
+                total_steps: totalSteps
+            })
+            .select('id')
+            .single();
+
+        if (error) throw new Error(error.message);
+
+        return data.id;
+    };
+
+    /**
+     * Pitcher: Get active (incomplete) simulation run
+     */
+    const getActiveSimulationRun = async (pitcherId: string): Promise<PitchSimulationRun | null> => {
+        if (!currentUser || currentUser.id !== pitcherId) {
+            throw new Error('Can only view your own runs');
+        }
+
+        const { data, error } = await supabase
+            .from('pitch_simulation_runs')
+            .select('*')
+            .eq('pitcher_id', pitcherId)
+            .is('completed_at', null)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error fetching active run:', error);
+            return null;
+        }
+
+        if (!data) return null;
+
+        return {
+            id: data.id,
+            templateId: data.template_id,
+            pitcherId: data.pitcher_id,
+            teamId: data.team_id,
+            startedAt: data.started_at,
+            completedAt: data.completed_at || undefined,
+            currentStepIndex: data.current_step_index,
+            totalSteps: data.total_steps,
+            createdAt: data.created_at
+        };
+    };
+
+    /**
+     * Pitcher: Record that a pitch was logged for a simulation step
+     */
+    const recordSimulationPitch = async (
+        runId: string,
+        stepId: string,
+        pitchRecordId: string,
+        isStrike: boolean,
+        hitIntendedZone: boolean
+    ): Promise<void> => {
+        if (!currentUser) throw new Error('Must be signed in');
+
+        const { error } = await supabase
+            .from('pitch_simulation_run_pitches')
+            .insert({
+                run_id: runId,
+                step_id: stepId,
+                pitch_record_id: pitchRecordId,
+                is_strike: isStrike,
+                hit_intended_zone: hitIntendedZone
+            });
+
+        if (error) throw new Error(error.message);
+    };
+
+    /**
+     * Pitcher: Advance to next step (increment current_step_index)
+     */
+    const advanceSimulationStep = async (runId: string): Promise<void> => {
+        if (!currentUser) throw new Error('Must be signed in');
+
+        // Get current run
+        const { data: run, error: fetchError } = await supabase
+            .from('pitch_simulation_runs')
+            .select('current_step_index, total_steps')
+            .eq('id', runId)
+            .single();
+
+        if (fetchError) throw new Error(fetchError.message);
+
+        const nextIndex = run.current_step_index + 1;
+
+        const { error: updateError } = await supabase
+            .from('pitch_simulation_runs')
+            .update({ current_step_index: nextIndex })
+            .eq('id', runId);
+
+        if (updateError) throw new Error(updateError.message);
+    };
+
+    /**
+     * Pitcher: Complete a simulation run and return summary stats
+     */
+    const completeSimulationRun = async (runId: string): Promise<SimulationRunSummary> => {
+        if (!currentUser) throw new Error('Must be signed in');
+
+        // Mark run as completed
+        const { error: completeError } = await supabase
+            .from('pitch_simulation_runs')
+            .update({ completed_at: new Date().toISOString() })
+            .eq('id', runId);
+
+        if (completeError) throw new Error(completeError.message);
+
+        // Fetch all pitches for this run with details
+        const { data: runPitches, error: fetchError } = await supabase
+            .from('pitch_simulation_run_pitches')
+            .select(`
+                *,
+                step:pitch_simulation_steps (
+                    pitch_type:pitch_types (
+                        name,
+                        code
+                    )
+                )
+            `)
+            .eq('run_id', runId);
+
+        if (fetchError) throw new Error(fetchError.message);
+
+        // Calculate summary stats
+        const totalPitches = runPitches.length;
+        const strikes = runPitches.filter(p => p.is_strike).length;
+        const balls = totalPitches - strikes;
+        const accurateHits = runPitches.filter(p => p.hit_intended_zone).length;
+
+        const strikePct = totalPitches > 0 ? Math.round((strikes / totalPitches) * 100) : 0;
+        const accuracyPct = totalPitches > 0 ? Math.round((accurateHits / totalPitches) * 100) : 0;
+
+        // Breakdown by pitch type
+        const pitchTypeMap = new Map<string, {
+            name: string;
+            code: string;
+            strikes: number;
+            total: number;
+            accurate: number;
+        }>();
+
+        runPitches.forEach(pitch => {
+            const ptName = pitch.step?.pitch_type?.name || 'Unknown';
+            const ptCode = pitch.step?.pitch_type?.code || '??';
+            const key = ptName;
+
+            if (!pitchTypeMap.has(key)) {
+                pitchTypeMap.set(key, {
+                    name: ptName,
+                    code: ptCode,
+                    strikes: 0,
+                    total: 0,
+                    accurate: 0
+                });
+            }
+
+            const stats = pitchTypeMap.get(key)!;
+            stats.total++;
+            if (pitch.is_strike) stats.strikes++;
+            if (pitch.hit_intended_zone) stats.accurate++;
+        });
+
+        const pitchTypeBreakdown = Array.from(pitchTypeMap.values()).map(stats => ({
+            pitchTypeName: stats.name,
+            pitchTypeCode: stats.code,
+            count: stats.total,
+            strikePct: Math.round((stats.strikes / stats.total) * 100),
+            accuracyPct: Math.round((stats.accurate / stats.total) * 100)
+        }));
+
+        return {
+            totalPitches,
+            strikes,
+            balls,
+            strikePct,
+            accuracyPct,
+            pitchTypeBreakdown
+        };
     };
 
 
@@ -2579,6 +3690,31 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         promoteOrDemoteCoach,
         recordSessionIntent,
         setRecordSessionIntent,
+        getPitchTypesForPitcher,
+        addCustomPitchType,
+        createPitchSession,
+        recordPitch,
+        updatePitch,
+        finalizePitchSession,
+        getPitchEligibility,
+        getTeamSettings,
+        updateTeamSettings,
+        getPitchSession,
+        getAllPitchSessionsForPlayer,
+        getPitchHistory,
+        // Pitch Simulations
+        createSimulationTemplate,
+        updateSimulationTemplate,
+        getSimulationTemplatesForTeam,
+        getSimulationSteps,
+        assignSimulationToPitchers,
+        deactivateSimulationTemplate,
+        getAssignedSimulations,
+        startSimulationRun,
+        getActiveSimulationRun,
+        recordSimulationPitch,
+        advanceSimulationStep,
+        completeSimulationRun,
         activeTeam,
         activeTeamId,
         currentUserRole: currentUser?.role ?? null,

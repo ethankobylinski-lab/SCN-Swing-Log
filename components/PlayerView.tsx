@@ -1,6 +1,11 @@
 import React, { useState, useContext, useMemo, useEffect } from 'react';
 import { DataContext, PitchingStatsSummary } from '../contexts/DataContext';
 import { Dashboard } from './Dashboard';
+import { ToastProvider } from './ToastProvider';
+import { LoadingSkeleton, SessionCardSkeleton, StatCardSkeleton, ListSkeleton, ChartSkeleton } from './LoadingSkeleton';
+import { EmptyState, NoSessionsEmpty, NoDrillsEmpty, NoGoalsEmpty, NoHistoryEmpty, NoAnalyticsEmpty } from './EmptyState';
+import { Button, SaveButton, CancelButton, SaveSessionButton, EndSessionButton, LogPitchButton, CreateButton } from './Button';
+import { PitchTracker } from './PitchTracker/PitchTracker';
 import { ProfileTab } from './ProfileTab';
 import { HomeIcon } from './icons/HomeIcon';
 import { ClipboardListIcon } from './icons/ClipboardListIcon';
@@ -9,17 +14,27 @@ import { PencilIcon } from './icons/PencilIcon';
 import { NoteIcon } from './icons/NoteIcon';
 import { ProfileIcon } from './icons/ProfileIcon';
 import { InfoIcon } from './icons/InfoIcon';
-import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner, PersonalGoal, GoalType, TeamGoal, UserRole } from '../types';
+import { PlusIcon } from './icons/PlusIcon';
+import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner, PersonalGoal, GoalType, TeamGoal, UserRole, PitchSession } from '../types';
 import { formatDate, calculateExecutionPercentage, getSessionGoalProgress, calculateHardHitPercentage, formatGoalName, calculateStrikeoutPercentage, getCurrentTeamMetricValue, formatTeamGoalName, describeRelativeDay, resolveDrillTypeForSet } from '../utils/helpers';
 import { AnalyticsCharts } from './AnalyticsCharts';
 import { TARGET_ZONES, PITCH_TYPES, COUNT_SITUATIONS, BASE_RUNNERS, OUTS_OPTIONS, DRILL_TYPES, GOAL_TYPES } from '../constants';
-import { PlayerRadarChart } from './PlayerRadarChart';
 import { Modal } from './Modal';
 import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
 import { BreakdownBar } from './BreakdownBar';
 import { SessionSaveAnimation } from './SessionSaveAnimation';
 import { Tooltip } from './Tooltip';
 import { SessionDetail } from './SessionDetail';
+import { PlayerAnalyticsTab } from './PlayerAnalyticsTab';
+import { PitchRestCard } from './PitchRestCard';
+import { PitchingSessionFlow } from './PitchingSessionFlow';
+import { SimplePitchingForm } from './SimplePitchingForm';
+import { PitchSessionDetailModal } from './PitchSessionDetailModal';
+import { RecordSessionModal } from './RecordSessionModal';
+import { generatePitchSessionTitle } from '../utils/sessionTitleGenerator';
+import { supabase } from '../supabaseClient';
+import { usePitchingAnalytics } from '../hooks/usePitchingAnalytics';
+import { WorkloadCalendar } from './WorkloadCalendar';
 
 const doesSetMatchGoal = (goal: PersonalGoal, session: Session, set: SetResult, drills: Drill[]) => {
     if (goal.drillType) {
@@ -75,6 +90,37 @@ const getGoalValueForSets = (goal: PersonalGoal, sets: SetResult[]) => {
     }
 };
 
+const getPitchingGoalValue = (goal: PersonalGoal, sessions: PitchSession[]) => {
+    // Filter sessions by date range
+    const relevantSessions = sessions.filter(s => {
+        const d = new Date(s.date);
+        return d >= new Date(goal.startDate) && d <= new Date(goal.targetDate);
+    });
+
+    switch (goal.metric) {
+        case 'Strike %':
+            const totalPitches = relevantSessions.reduce((sum, s) => sum + (s.totalPitches || 0), 0);
+            if (totalPitches === 0) return 0;
+            const strikes = relevantSessions.flatMap(s => s.pitchRecords || []).filter(p => ['called_strike', 'swinging_strike', 'foul', 'in_play'].includes(p.outcome)).length;
+            return Math.round((strikes / totalPitches) * 100);
+        case 'Velocity':
+            // Max velocity in period
+            let maxVel = 0;
+            relevantSessions.forEach(s => {
+                s.pitchRecords?.forEach(p => {
+                    if (p.velocityMph && p.velocityMph > maxVel) maxVel = p.velocityMph;
+                });
+            });
+            return maxVel;
+        case 'Command':
+            // Placeholder for command score logic if complex, or simple strike % equivalent for now
+            // For now, let's use Strike % logic as a proxy or 0 if not defined
+            return 0;
+        default:
+            return 0;
+    }
+};
+
 const resolveMinRepsRequirement = (goal: PersonalGoal): number | undefined => {
     if (goal.metric !== 'Execution %') {
         return undefined;
@@ -82,17 +128,24 @@ const resolveMinRepsRequirement = (goal: PersonalGoal): number | undefined => {
     return goal.minReps ?? 50;
 };
 
-const GoalProgress: React.FC<{
+export const GoalProgress: React.FC<{
     goal: PersonalGoal;
     sessions: Session[];
+    pitchSessions: PitchSession[];
     drills: Drill[];
     onDelete: (goalId: string) => Promise<void>;
     onSelect?: (goal: PersonalGoal) => void;
-}> = ({ goal, sessions, drills, onDelete, onSelect }) => {
-    const goalSets = useMemo(() => collectGoalSets(goal, sessions, drills), [goal, sessions, drills]);
+}> = ({ goal, sessions, pitchSessions, drills, onDelete, onSelect }) => {
+    const isPitchingGoal = ['Strike %', 'Velocity', 'Command'].includes(goal.metric);
+
+    const goalSets = useMemo(() => !isPitchingGoal ? collectGoalSets(goal, sessions, drills) : [], [goal, sessions, drills, isPitchingGoal]);
     const filteredSets = goalSets.map(({ set }) => set);
-    const currentValue = filteredSets.length > 0 ? getGoalValueForSets(goal, filteredSets) : 0;
-    const totalRepsLogged = filteredSets.reduce((sum, set) => sum + set.repsAttempted, 0);
+
+    const currentValue = isPitchingGoal
+        ? getPitchingGoalValue(goal, pitchSessions)
+        : (filteredSets.length > 0 ? getGoalValueForSets(goal, filteredSets) : 0);
+
+    const totalRepsLogged = !isPitchingGoal ? filteredSets.reduce((sum, set) => sum + set.repsAttempted, 0) : 0;
     const minRepsRequired = resolveMinRepsRequirement(goal);
     const volumeRatio =
         minRepsRequired && minRepsRequired > 0 ? Math.min(totalRepsLogged / minRepsRequired, 1) : 1;
@@ -307,14 +360,15 @@ const GoalDetail: React.FC<GoalDetailProps> = ({
             <section className="space-y-3">
                 <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-muted-foreground">Reflection</p>
-                    <button
+                    <Button
                         type="button"
                         onClick={() => onSaveReflection()}
-                        disabled={isSavingReflection}
-                        className="text-xs font-semibold bg-primary text-primary-foreground px-3 py-1 rounded-md disabled:opacity-50"
+                        isLoading={isSavingReflection}
+                        variant="primary"
+                        size="sm"
                     >
-                        {isSavingReflection ? 'Saving...' : 'Save Reflection'}
-                    </button>
+                        Save Reflection
+                    </Button>
                 </div>
                 {errorMessage && <p className="text-xs text-destructive">{errorMessage}</p>}
                 <textarea
@@ -423,16 +477,18 @@ const PlayerDashboard: React.FC<{
     player: Player;
     assignedDrills: Drill[];
     recentSessions: Session[];
+    pitchSessions: PitchSession[];
     drills: Drill[];
     goals: PersonalGoal[];
     teamGoals: TeamGoal[];
     teamSessions: Session[];
     onStartAssignedSession: (drill: Drill) => void;
     activeTeamId?: string;
-}> = ({ player, assignedDrills, recentSessions, drills, goals, teamGoals, teamSessions, onStartAssignedSession, activeTeamId }) => {
+    loading?: boolean;
+}> = ({ player, assignedDrills, recentSessions, pitchSessions, drills, goals, teamGoals, teamSessions, onStartAssignedSession, activeTeamId, loading = false }) => {
 
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-    const { createGoal, deleteGoal, updateGoal } = useContext(DataContext)!;
+    const { createGoal, deleteGoal, updateGoal, databaseError } = useContext(DataContext)!;
     const teamId = activeTeamId;
     const [goalFormError, setGoalFormError] = useState<string | null>(null);
     const [goalListError, setGoalListError] = useState<string | null>(null);
@@ -526,19 +582,51 @@ const PlayerDashboard: React.FC<{
         </div>
     );
 
+    if (databaseError) {
+        return (
+            <EmptyState
+                title="Connection Error"
+                message="We couldn't load your dashboard data. Please check your connection and try again."
+                icon="⚠️"
+                actionLabel="Retry"
+                onAction={() => window.location.reload()}
+            />
+        );
+    }
+
     return (
         <div className="space-y-8">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <StatCard title="Drills for Today" value={assignedDrills.length.toString()} />
-                <StatCard title="Overall Execution" value={`${overallExecutionPct}%`} />
-                <StatCard title="Active Goals" value={goals.length.toString()} />
+                {loading ? (
+                    <>
+                        <StatCardSkeleton />
+                        <StatCardSkeleton />
+                        <StatCardSkeleton />
+                    </>
+                ) : (
+                    <>
+                        <StatCard title="Drills for Today" value={assignedDrills.length.toString()} />
+                        <StatCard title="Overall Execution" value={`${overallExecutionPct}%`} />
+                        <StatCard title="Active Goals" value={goals.length.toString()} />
+                    </>
+                )}
+            </div>
+
+            <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                <WorkloadCalendar
+                    hittingSessions={recentSessions}
+                    pitchingSessions={pitchSessions}
+                    days={14}
+                />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
                     <div>
                         <h2 className="text-xl font-bold text-foreground mb-4">Today's Drills</h2>
-                        {assignedDrills.length > 0 ? (
+                        {loading ? (
+                            <ListSkeleton count={2} />
+                        ) : assignedDrills.length > 0 ? (
                             <div className="space-y-4">
                                 {assignedDrills.map(drill => (
                                     <div key={drill.id} className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col justify-between">
@@ -547,31 +635,36 @@ const PlayerDashboard: React.FC<{
                                             <p className="text-sm text-muted-foreground mt-1 mb-3">{drill.description}</p>
                                             <p className="text-xs text-card-foreground"><strong>Goal:</strong> {drill.goalType} &gt;= {drill.goalTargetValue}{drill.goalType.includes('%') ? '%' : ''}</p>
                                         </div>
-                                        <button onClick={() => onStartAssignedSession(drill)} className="w-full mt-4 bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-2 px-4 rounded-lg text-sm">
+                                        <Button
+                                            onClick={() => onStartAssignedSession(drill)}
+                                            variant="secondary"
+                                            fullWidth
+                                            className="mt-4"
+                                        >
                                             Start Session
-                                        </button>
+                                        </Button>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
-                                <p className="font-medium">No drills assigned for today.</p>
-                                <p className="text-sm">Enjoy the breather or log an ad-hoc session to stay sharp.</p>
-                            </div>
+                            <NoDrillsEmpty onCreateDrill={() => { }} />
                         )}
                     </div>
                     <div>
                         <h2 className="text-xl font-bold text-foreground mb-4">Active Team Goals</h2>
                         <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                            {teamGoals.length > 0 ? (
+                            {loading ? (
+                                <ListSkeleton count={1} />
+                            ) : teamGoals.length > 0 ? (
                                 <div className="space-y-4">
                                     {teamGoals.map(g => <TeamGoalProgress key={g.id} goal={g} sessions={teamSessions} drills={drills} />)}
                                 </div>
                             ) : (
-                                <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
-                                    <p className="font-medium">No team goals just yet.</p>
-                                    <p className="text-sm">Once your coach sets one, it will show up here.</p>
-                                </div>
+                                <EmptyState
+                                    icon="🏆"
+                                    title="No Team Goals"
+                                    message="Once your coach sets a team goal, it will appear here."
+                                />
                             )}
                         </div>
                     </div>
@@ -579,25 +672,29 @@ const PlayerDashboard: React.FC<{
                 <div>
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-bold text-foreground">My Goals</h2>
-                        <button
+                        <Button
                             onClick={() => {
                                 setGoalFormError(null);
                                 setIsGoalModalOpen(true);
                             }}
-                            className="bg-accent hover:bg-accent/90 text-accent-foreground font-bold py-1 px-3 text-sm rounded-lg"
+                            variant="primary"
+                            size="sm"
                         >
                             + Set Goal
-                        </button>
+                        </Button>
                     </div>
                     <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
                         {goalListError && <p className="text-sm text-destructive mb-3">{goalListError}</p>}
-                        {goals.length > 0 ? (
+                        {loading ? (
+                            <ListSkeleton count={2} />
+                        ) : goals.length > 0 ? (
                             <div className="space-y-4">
                                 {goals.map(g => (
                                     <GoalProgress
                                         key={g.id}
                                         goal={g}
                                         sessions={recentSessions}
+                                        pitchSessions={pitchSessions}
                                         drills={drills}
                                         onDelete={handleDeleteGoal}
                                         onSelect={handleOpenGoalDetail}
@@ -605,10 +702,10 @@ const PlayerDashboard: React.FC<{
                                 ))}
                             </div>
                         ) : (
-                            <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center text-muted-foreground space-y-1">
-                                <p className="font-medium">You haven’t set any personal goals yet.</p>
-                                <p className="text-sm">Tap “+ Set Goal” to lock in a target for this week.</p>
-                            </div>
+                            <NoGoalsEmpty onCreateGoal={() => {
+                                setGoalFormError(null);
+                                setIsGoalModalOpen(true);
+                            }} />
                         )}
                     </div>
                 </div>
@@ -648,9 +745,9 @@ const PlayerDashboard: React.FC<{
     );
 };
 
-type GoalFormValues = Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate' | 'teamId'>;
+export type GoalFormValues = Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate' | 'teamId'>;
 
-const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | void; isSaving?: boolean; errorMessage?: string | null; }> = ({ onSave, isSaving = false, errorMessage }) => {
+export const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | void; isSaving?: boolean; errorMessage?: string | null; }> = ({ onSave, isSaving = false, errorMessage }) => {
     const [metric, setMetric] = useState<GoalType>('Execution %');
     const [targetValue, setTargetValue] = useState(85);
     const [targetDate, setTargetDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]); // 30 days from now
@@ -679,7 +776,12 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
         if (metric === 'Execution %') {
             goalData.minReps = Math.max(1, minReps);
         }
-        await onSave(goalData);
+        try {
+            await onSave(goalData);
+        } catch (err) {
+            // Error is handled by parent, but we catch here to prevent bubbling if needed
+            console.error('Goal save failed:', err);
+        }
     };
 
     return (
@@ -690,6 +792,8 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
                     <label className="block text-sm font-medium text-muted-foreground">Metric</label>
                     <select value={metric} onChange={e => setMetric(e.target.value as GoalType)} className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
                         {GOAL_TYPES.map(g => <option key={g} value={g}>{g}</option>)}
+                        <option value="Strike %">Strike %</option>
+                        <option value="Velocity">Velocity (mph)</option>
                     </select>
                 </div>
                 <div>
@@ -729,7 +833,7 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
                         <label className="block text-sm font-medium text-muted-foreground mb-2">Target Zones</label>
                         <div className="grid grid-cols-3 gap-2">
                             {TARGET_ZONES.map(zone => (
-                                <button type="button" key={zone} onClick={() => handleTargetZoneSelect(zone)} className={`p-2 text-xs rounded-md ${targetZones.includes(zone) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>{zone}</button>
+                                <Button type="button" key={zone} onClick={() => handleTargetZoneSelect(zone)} variant={targetZones.includes(zone) ? 'primary' : 'ghost'} size="sm">{zone}</Button>
                             ))}
                         </div>
                         {targetZones.length > 0 && (
@@ -742,14 +846,15 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
                         <label className="block text-sm font-medium text-muted-foreground mb-2">Pitch Types</label>
                         <div className="grid grid-cols-3 gap-2">
                             {PITCH_TYPES.map(pitch => (
-                                <button
+                                <Button
                                     type="button"
                                     key={pitch}
                                     onClick={() => handlePitchTypeSelect(pitch)}
-                                    className={`p-2 text-xs rounded-md ${pitchTypes.includes(pitch) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+                                    variant={pitchTypes.includes(pitch) ? 'primary' : 'ghost'}
+                                    size="sm"
                                 >
                                     {pitch}
-                                </button>
+                                </Button>
                             ))}
                         </div>
                         {pitchTypes.length > 0 && (
@@ -761,14 +866,14 @@ const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | voi
                 </div>
             </div>
 
-            <div className="flex justify-end pt-4">
-                <button
+            <div className="flex gap-3 justify-end pt-4">
+                <Button
                     type="submit"
-                    disabled={isSaving}
-                    className="py-2 px-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-md disabled:opacity-50"
+                    variant="primary"
+                    isLoading={isSaving}
                 >
-                    {isSaving ? 'Saving...' : 'Save Goal'}
-                </button>
+                    Save Goal
+                </Button>
             </div>
         </form>
     );
@@ -789,135 +894,552 @@ const PitchingSessionForm: React.FC<{
     errorMessage?: string | null;
     resetKey: number;
 }> = ({ onSave, onCancel, isSaving, errorMessage, resetKey }) => {
-    const [totalPitches, setTotalPitches] = useState(60);
-    const [strikes, setStrikes] = useState(40);
-    const [balls, setBalls] = useState(20);
-    const [avgVelocity, setAvgVelocity] = useState<number | ''>(82);
+    // Pitch recording state
+    const [pitchRecords, setPitchRecords] = useState<Array<{
+        id: string;
+        batterSide: 'L' | 'R';
+        ballsBefore: number;
+        strikesBefore: number;
+        pitchTypeCode: string;
+        pitchTypeColor: string;
+        intendedZoneId: string;
+        intendedXNorm: number;
+        intendedYNorm: number;
+        actualZoneId: string;
+        actualXNorm: number;
+        actualYNorm: number;
+        isStrike: boolean;
+        hitTarget: boolean;
+    }>>([]);
+
+    // UI state
+    const [batterSide, setBatterSide] = useState<'L' | 'R'>('R');
+    const [balls, setBalls] = useState(0);
+    const [strikeCount, setStrikeCount] = useState(0);
+    const [selectedPitchType, setSelectedPitchType] = useState('FB');
+    const [pitchTypes, setPitchTypes] = useState([
+        { id: 'FB', code: 'FB', name: 'Fastball', colorHex: '#ef4444' },
+        { id: 'CURVE', code: 'CV', name: 'Curve', colorHex: '#3b82f6' },
+        { id: 'CH', code: 'CH', name: 'Changeup', colorHex: '#10b981' }
+    ]);
     const [notes, setNotes] = useState('');
 
+    // Mode state ('setTarget' | 'logPitch')
+    type Mode = 'setTarget' | 'logPitch';
+    const [mode, setMode] = useState<Mode>('setTarget');
+
+    // Target state (persists across pitches)
+    const [targetZone, setTargetZone] = useState<string | null>(null);
+    const [targetX, setTargetX] = useState<number | null>(null);
+    const [targetY, setTargetY] = useState<number | null>(null);
+
     useEffect(() => {
-        setTotalPitches(60);
-        setStrikes(40);
-        setBalls(20);
-        setAvgVelocity(82);
+        // Reset form when resetKey changes
+        setPitchRecords([]);
+        setBatterSide('R');
+        setBalls(0);
+        setStrikeCount(0);
+        setSelectedPitchType('FB');
         setNotes('');
+        setMode('setTarget');
+        setTargetZone(null);
+        setTargetX(null);
+        setTargetY(null);
     }, [resetKey]);
+
+    const handleTargetSelect = (zone: string, x: number, y: number) => {
+        setTargetZone(zone);
+        setTargetX(x);
+        setTargetY(y);
+        // Auto-switch to logging mode after setting target
+        setMode('logPitch');
+    };
+
+    // Helper: Determine if a pitch is a strike based on coordinates
+    // Strike zone is the 3x3 grid area: x from 25-115, y from 20-95 (in 140x140 viewBox)
+    // If pitch coordinates touch ANY part of this area (including borders), it's a strike
+    const isStrikeZone = (zoneId: string): boolean => {
+        const strikeZones = ['Z11', 'Z12', 'Z13', 'Z21', 'Z22', 'Z23', 'Z31', 'Z32', 'Z33'];
+        return strikeZones.includes(zoneId);
+    };
+
+    // Better strike detection based on coordinates (touching the black = strike)
+    const isStrikeByCoords = (xNorm: number, yNorm: number): boolean => {
+        // 3x3 zone in SVG: x from 25-115, y from 20-95 (viewBox 140x140)
+        // Convert to normalized: x: 0.179-0.821, y: 0.143-0.679 (SVG coords)
+        // But we flip y, so in our normalized coords: y: 0.321-0.857
+        const svgX = xNorm * 140;
+        const svgY = 140 - (yNorm * 140);
+
+        // Check if coordinates are within or touching the 3x3 grid bounds
+        return svgX >= 25 && svgX <= 115 && svgY >= 20 && svgY <= 95;
+    };
+
+    const handleActualPitchClick = (actualZone: string, actualX: number, actualY: number) => {
+        if (!selectedPitchType) {
+            alert('Please select a pitch type first');
+            return;
+        }
+
+        // Get the color for this pitch type
+        const pitchType = pitchTypes.find(pt => pt.code === selectedPitchType);
+        const pitchColor = pitchType?.colorHex || '#f44336';
+
+        // Determine if pitch hit the intended target zone
+        const hitTarget = actualZone === targetZone;
+
+        // Create new pitch record with color and target hit
+        const newPitch = {
+            id: `pitch_${Date.now()}_${Math.random()}`,
+            batterSide,
+            ballsBefore: balls,
+            strikesBefore: strikeCount,
+            pitchTypeCode: selectedPitchType,
+            pitchTypeColor: pitchColor,
+            intendedZoneId: targetZone,
+            intendedXNorm: targetX,
+            intendedYNorm: targetY,
+            actualZoneId: actualZone,
+            actualXNorm: actualX,
+            actualYNorm: actualY,
+            isStrike: isStrikeByCoords(actualX, actualY),
+            hitTarget: hitTarget
+        };
+
+        setPitchRecords(prev => [...prev, newPitch]);
+
+        // Optionally reset count after each pitch
+        // setBalls(0);
+        // setStrikeCount(0);
+    };
+
+    const handleAddCustomPitchType = (name: string, code: string, colorHex: string) => {
+        const newType = {
+            id: code,
+            code,
+            name,
+            colorHex
+        };
+        setPitchTypes(prev => [...prev, newType]);
+        setSelectedPitchType(code);
+    };
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
-        await onSave({
-            totalPitches,
-            strikes,
-            balls,
-            avgVelocity: typeof avgVelocity === 'number' ? avgVelocity : undefined,
-            notes,
-        });
+
+        // Calculate totals from pitch records using strike logic
+        const totalPitches = pitchRecords.length;
+        const strikes = pitchRecords.filter(p => p.isStrike).length;
+        const ballsCount = totalPitches - strikes;
+
+        try {
+            await onSave({
+                totalPitches,
+                strikes,
+                balls: ballsCount,
+                notes
+            });
+        } catch (err) {
+            console.error('Pitching session save failed:', err);
+            // Error state is managed by parent via errorMessage prop
+        }
     };
 
-    const strikePercentage = totalPitches > 0 ? Math.round((strikes / totalPitches) * 100) : 0;
+    const strikePercentage = pitchRecords.length > 0
+        ? Math.round((pitchRecords.filter(p => p.isStrike).length / pitchRecords.length) * 100)
+        : 0;
+
+    // Convert pitch records to dots for StrikeZone with colors
+    const pitchDots = pitchRecords.map(p => ({
+        id: p.id,
+        xNorm: p.actualXNorm,
+        yNorm: p.actualYNorm,
+        color: p.pitchTypeColor
+    }));
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="bg-card border border-border rounded-lg shadow-sm p-6 space-y-6">
-                <div>
-                    <h3 className="text-lg font-semibold text-foreground">Pitching Session Summary</h3>
-                    <p className="text-sm text-muted-foreground">Log the overall bullpen metrics for this outing.</p>
+        <form onSubmit={handleSubmit} className="space-y-4" style={{ maxWidth: '600px', margin: '0 auto' }}>
+            {/* Header */}
+            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h3 className="text-lg font-semibold text-foreground">Pitching Session</h3>
+                        <p className="text-sm text-muted-foreground">Pitch #{pitchRecords.length + 1}</p>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-2xl font-bold text-primary">{strikePercentage}%</div>
+                        <div className="text-xs text-muted-foreground">Strike Rate</div>
+                    </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            </div>
+
+            {/* 1. Batter & Count */}
+            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Situation</h4>
+                <div style={{ display: 'flex', gap: '2rem', alignItems: 'center', padding: '0.5rem', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                    {/* Batter Side */}
                     <div>
-                        <label className="block text-sm font-medium text-muted-foreground">Total Pitches</label>
-                        <input
-                            type="number"
-                            min={0}
-                            value={totalPitches}
-                            onChange={(e) => setTotalPitches(Math.max(0, Number(e.target.value)))}
-                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
-                        />
+                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>Batter</div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <Button
+                                type="button"
+                                onClick={() => setBatterSide('L')}
+                                variant={batterSide === 'L' ? 'primary' : 'ghost'}
+                                size="sm"
+                            >
+                                L
+                            </Button>
+                            <Button
+                                type="button"
+                                onClick={() => setBatterSide('R')}
+                                variant={batterSide === 'R' ? 'primary' : 'ghost'}
+                                size="sm"
+                            >
+                                R
+                            </Button>
+                        </div>
                     </div>
+
+                    {/* Balls */}
                     <div>
-                        <label className="block text-sm font-medium text-muted-foreground">Strikes</label>
-                        <input
-                            type="number"
-                            min={0}
-                            value={strikes}
-                            onChange={(e) => setStrikes(Math.max(0, Number(e.target.value)))}
-                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
-                        />
+                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>Balls</div>
+                        <div style={{ display: 'flex', gap: '0.3rem' }}>
+                            {[0, 1, 2, 3].map(i => (
+                                <Button
+                                    key={i}
+                                    onClick={() => setBalls(i < balls ? i : i + 1)}
+                                    variant={i < balls ? 'success' : 'secondary'}
+                                    size="sm"
+                                    className="rounded-full"
+                                />
+                            ))}
+                        </div>
                     </div>
+
+                    {/* Strikes */}
                     <div>
-                        <label className="block text-sm font-medium text-muted-foreground">Balls</label>
-                        <input
-                            type="number"
-                            min={0}
-                            value={balls}
-                            onChange={(e) => setBalls(Math.max(0, Number(e.target.value)))}
-                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
-                        />
+                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>Strikes</div>
+                        <div style={{ display: 'flex', gap: '0.3rem' }}>
+                            {[0, 1, 2].map(i => (
+                                <Button
+                                    key={i}
+                                    onClick={() => setStrikeCount(i < strikeCount ? i : i + 1)}
+                                    variant={i < strikeCount ? 'danger' : 'secondary'}
+                                    size="sm"
+                                    className="rounded-full"
+                                />
+                            ))}
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground">Average Velocity (MPH)</label>
-                        <input
-                            type="number"
-                            min={0}
-                            value={avgVelocity}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setAvgVelocity(val === '' ? '' : Math.max(0, Number(val)));
+
+                    {/* Count Display */}
+                    <div style={{ marginLeft: 'auto' }}>
+                        <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>Count</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                            {balls}–{strikeCount}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 2. Pitch Type */}
+            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Pitch Type</h4>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    {pitchTypes.map(type => (
+                        <Button
+                            key={type.id}
+                            type="button"
+                            onClick={() => setSelectedPitchType(type.code)}
+                            style={{
+                                borderColor: selectedPitchType === type.code ? type.colorHex : undefined,
+                                backgroundColor: selectedPitchType === type.code ? type.colorHex : undefined,
+                                color: selectedPitchType === type.code ? 'white' : undefined,
                             }}
-                            className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2"
+                            variant={selectedPitchType === type.code ? 'primary' : 'secondary'}
+                            className={selectedPitchType === type.code ? '' : 'text-muted-foreground'}
+                        >
+                            {type.code}
+                        </Button>
+                    ))}
+                    <Button
+                        type="button"
+                        onClick={() => {
+                            const name = prompt('Enter pitch name (e.g., Slider):');
+                            const code = prompt('Enter pitch code (e.g., SL):');
+                            if (name && code) {
+                                handleAddCustomPitchType(name, code, '#9333ea');
+                            }
+                        }}
+                        variant="secondary"
+                        size="sm"
+                    >
+                        + Custom
+                    </Button>
+                </div>
+            </div>
+
+            {/* 3. Strike Zone */}
+            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-2">Strike Zone</h4>
+
+                {/* Mode Toggle */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
+                    <Button
+                        type="button"
+                        onClick={() => setMode('setTarget')}
+                        variant={mode === 'setTarget' ? 'primary' : 'secondary'}
+                        className={mode === 'setTarget' ? 'border-yellow-400 bg-yellow-50/50 text-foreground' : 'text-muted-foreground'}
+                    >
+                        Set Intended Target
+                    </Button>
+                    <Button
+                        type="button"
+                        onClick={() => {
+                            if (!targetZone) {
+                                alert('Please set an intended target first');
+                                setMode('setTarget');
+                            } else {
+                                setMode('logPitch');
+                            }
+                        }}
+                        variant={mode === 'logPitch' ? 'success' : 'secondary'}
+                        className={mode === 'logPitch' ? 'border-green-400 bg-green-50/50 text-foreground' : 'text-muted-foreground'}
+                    >
+                        Log Pitches
+                    </Button>
+                </div>
+
+                {/* Helper Text */}
+                <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#666', marginBottom: '0.75rem' }}>
+                    {mode === 'setTarget' ? (
+                        <span>📍 Tap a zone to choose where you're aiming</span>
+                    ) : targetZone ? (
+                        <span>⚾ Tap where the pitch actually went. Red dots = recorded pitches</span>
+                    ) : (
+                        <span style={{ color: '#f44336' }}>⚠️ Set an intended target first</span>
+                    )}
+                </p>
+
+                <div style={{ maxWidth: '450px', margin: '0 auto' }}>
+                    <svg
+                        viewBox="0 0 140 140"
+                        style={{ width: '100%', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={(e) => {
+                            const svg = e.currentTarget;
+                            const rect = svg.getBoundingClientRect();
+                            const x = (e.clientX - rect.left) / rect.width;
+                            const y = 1 - (e.clientY - rect.top) / rect.height;
+
+                            const zone = getZoneFromCoords(x, y);
+
+                            if (mode === 'setTarget') {
+                                // Set target mode - only set target
+                                handleTargetSelect(zone, x, y);
+                            } else if (mode === 'logPitch') {
+                                // Log pitch mode
+                                if (!targetZone) {
+                                    alert('Set an intended target first');
+                                    setMode('setTarget');
+                                } else {
+                                    handleActualPitchClick(zone, x, y);
+                                }
+                            }
+                        }}
+                    >
+                        {/* Home plate - wider to match zone */}
+                        <polygon
+                            points="70,130 50,122 50,115 90,115 90,122"
+                            fill="#f5f5f5"
+                            stroke="#666"
+                            strokeWidth="1.5"
                         />
+
+                        {/* Batter indicators - Labeled circles (Pitcher's POV: R on left, L on right) */}
+                        {/* Left circle with "RH" - lights up when R is selected */}
+                        <g>
+                            <circle
+                                cx="15"
+                                cy="60"
+                                r="12"
+                                fill={batterSide === 'R' ? '#3b82f6' : '#e5e7eb'}
+                                stroke={batterSide === 'R' ? '#2563eb' : '#9ca3af'}
+                                strokeWidth="2"
+                            />
+                            <text
+                                x="15"
+                                y="63"
+                                textAnchor="middle"
+                                fontSize="8"
+                                fontWeight="bold"
+                                fill={batterSide === 'R' ? '#ffffff' : '#6b7280'}
+                            >RH</text>
+                        </g>
+                        {/* Right circle with "LH" - lights up when L is selected */}
+                        <g>
+                            <circle
+                                cx="125"
+                                cy="60"
+                                r="12"
+                                fill={batterSide === 'L' ? '#3b82f6' : '#e5e7eb'}
+                                stroke={batterSide === 'L' ? '#2563eb' : '#9ca3af'}
+                                strokeWidth="2"
+                            />
+                            <text
+                                x="125"
+                                y="63"
+                                textAnchor="middle"
+                                fontSize="8"
+                                fontWeight="bold"
+                                fill={batterSide === 'L' ? '#ffffff' : '#6b7280'}
+                            >LH</text>
+                        </g>
+
+                        {/* Edge zones - dashed boxes */}
+                        <rect x="25" y="5" width="90" height="15"
+                            fill={targetZone === 'EDGE_HIGH' ? '#FFE066' : 'none'}
+                            fillOpacity={targetZone === 'EDGE_HIGH' ? 0.5 : 0}
+                            stroke="#999" strokeWidth="1" strokeDasharray="3,3" />
+                        <rect x="25" y="95" width="90" height="15"
+                            fill={targetZone === 'EDGE_LOW' ? '#FFE066' : 'none'}
+                            fillOpacity={targetZone === 'EDGE_LOW' ? 0.5 : 0}
+                            stroke="#999" strokeWidth="1" strokeDasharray="3,3" />
+                        <rect x="5" y="20" width="20" height="75"
+                            fill={targetZone === 'EDGE_GLOVE' ? '#FFE066' : 'none'}
+                            fillOpacity={targetZone === 'EDGE_GLOVE' ? 0.5 : 0}
+                            stroke="#999" strokeWidth="1" strokeDasharray="3,3" />
+                        <rect x="115" y="20" width="20" height="75"
+                            fill={targetZone === 'EDGE_ARM' ? '#FFE066' : 'none'}
+                            fillOpacity={targetZone === 'EDGE_ARM' ? 0.5 : 0}
+                            stroke="#999" strokeWidth="1" strokeDasharray="3,3" />
+
+                        {/* 3x3 grid - aligned above plate */}
+                        {[
+                            ['Z11', 'Z12', 'Z13'],
+                            ['Z21', 'Z22', 'Z23'],
+                            ['Z31', 'Z32', 'Z33']
+                        ].map((row, rowIdx) =>
+                            row.map((zone, colIdx) => {
+                                const x = 25 + colIdx * 30;
+                                const y = 20 + rowIdx * 25;
+                                const w = 30;
+                                const h = 25;
+                                return (
+                                    <rect
+                                        key={zone}
+                                        x={x}
+                                        y={y}
+                                        width={w}
+                                        height={h}
+                                        fill={targetZone === zone ? '#FFE066' : 'none'}
+                                        fillOpacity={targetZone === zone ? 0.6 : 0}
+                                        stroke="currentColor"
+                                        strokeWidth="1.5"
+                                        className="text-foreground/40"
+                                    />
+                                );
+                            })
+                        )}
+
+                        {/* Pitch history dots - color coded by pitch type */}
+                        {pitchDots.map((pitch) => {
+                            const svgX = pitch.xNorm * 140;
+                            const svgY = 140 - (pitch.yNorm * 140);
+                            return (
+                                <circle
+                                    key={pitch.id}
+                                    cx={svgX}
+                                    cy={svgY}
+                                    r="2.5"
+                                    fill={pitch.color}
+                                    stroke="#fff"
+                                    strokeWidth="0.5"
+                                    opacity="0.9"
+                                />
+                            );
+                        })}
+                    </svg>
+                </div>
+            </div>
+
+            {/* 4. Notes */}
+            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+                <h4 className="text-sm font-semibold text-muted-foreground mb-2">Notes</h4>
+                <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                    className="w-full bg-background border border-input rounded-lg px-3 py-2 text-sm"
+                    placeholder="What were you working on? Velocity goals, pitch-mix focus, etc."
+                />
+            </div>
+
+            {/* Stats & Actions */}
+            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+                <div className="grid grid-cols-3 gap-3 mb-4 text-center">
+                    <div>
+                        <p className="text-xs text-muted-foreground uppercase">Pitches</p>
+                        <p className="text-xl font-bold text-foreground">{pitchRecords.length}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs text-muted-foreground uppercase">Strikes</p>
+                        <p className="text-xl font-bold text-success">{pitchRecords.filter(p => ['Z11', 'Z12', 'Z13', 'Z21', 'Z22', 'Z23', 'Z31', 'Z32', 'Z33'].includes(p.actualZoneId)).length}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs text-muted-foreground uppercase">Balls</p>
+                        <p className="text-xl font-bold text-muted-foreground">{pitchRecords.length - pitchRecords.filter(p => ['Z11', 'Z12', 'Z13', 'Z21', 'Z22', 'Z23', 'Z31', 'Z32', 'Z33'].includes(p.actualZoneId)).length}</p>
                     </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                    <div className="rounded-xl border border-border p-3">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Strike %</p>
-                        <p className="text-2xl font-bold text-primary">{strikePercentage}%</p>
-                    </div>
-                    <div className="rounded-xl border border-border p-3">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Strikes</p>
-                        <p className="text-2xl font-bold text-foreground">{strikes}</p>
-                    </div>
-                    <div className="rounded-xl border border-border p-3">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Balls</p>
-                        <p className="text-2xl font-bold text-foreground">{balls}</p>
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-muted-foreground">Notes / Focus</label>
-                    <textarea
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        rows={4}
-                        className="mt-2 w-full bg-background border border-input rounded-lg px-3 py-2 text-sm"
-                        placeholder="What were you working on? Velocity goals, pitch-mix focus, etc."
-                    />
-                </div>
+
                 {errorMessage && (
-                    <p className="text-sm text-destructive" role="status" aria-live="assertive">
+                    <p className="text-sm text-destructive mb-3" role="status" aria-live="assertive">
                         {errorMessage}
                     </p>
                 )}
-                <div className="flex justify-end gap-4">
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="bg-muted hover:bg-muted/80 text-foreground font-bold py-2 px-6 rounded-lg"
-                        disabled={isSaving}
-                    >
-                        Cancel
-                    </button>
-                    <button
+
+                <div className="flex justify-end gap-3">
+                    <CancelButton onClick={onCancel} disabled={isSaving} />
+                    <Button
+                        onClick={() => { }} // Form handles submit
+                        isLoading={isSaving}
+                        disabled={pitchRecords.length === 0}
+                        variant="success"
                         type="submit"
-                        disabled={isSaving}
-                        className="bg-secondary hover:bg-secondary/90 disabled:opacity-60 text-secondary-foreground font-bold py-2 px-6 rounded-lg"
                     >
-                        {isSaving ? 'Saving…' : 'Save Pitching Session'}
-                    </button>
+                        Save Session ({pitchRecords.length} pitches)
+                    </Button>
                 </div>
             </div>
         </form>
     );
 };
+
+// Helper function remains the same
+function getZoneFromCoords(x: number, y: number): string {
+    const zoneLeft = 0.25;
+    const zoneRight = 0.75;
+    const zoneBottom = 0.125;
+    const zoneTop = 0.792;
+
+    if (y > zoneTop) return 'EDGE_HIGH';
+    if (y < zoneBottom) return 'EDGE_LOW';
+    if (x < zoneLeft) return 'EDGE_GLOVE';
+    if (x > zoneRight) return 'EDGE_ARM';
+
+    const col = Math.floor((x - zoneLeft) / ((zoneRight - zoneLeft) / 3));
+    const row = Math.floor((y - zoneBottom) / ((zoneTop - zoneBottom) / 3));
+
+    const clampedCol = Math.max(0, Math.min(2, col));
+    const clampedRow = Math.max(0, Math.min(2, row));
+
+    const zones = [
+        ['Z31', 'Z32', 'Z33'],
+        ['Z21', 'Z22', 'Z23'],
+        ['Z11', 'Z12', 'Z13']
+    ];
+
+    return zones[clampedRow][clampedCol];
+}
 
 const summarizePitchingSession = (session: Session) => {
     const summarySet = session.sets[0];
@@ -1006,9 +1528,9 @@ const LogSession: React.FC<{
     assignedDrill: Drill | null;
     onSave: (sessionData: { name: string; drillId?: string; sets: SetResult[]; reflection?: string }) => Promise<void>;
     onCancel: () => void;
-    isSaving: boolean;
+    isLoading: boolean;
     errorMessage?: string | null;
-}> = ({ assignedDrill, onSave, onCancel, isSaving, errorMessage }) => {
+}> = ({ assignedDrill, onSave, onCancel, isLoading, errorMessage }) => {
 
     const isAssigned = !!assignedDrill;
     const initialSet: SetResult = { setNumber: 1, repsAttempted: assignedDrill?.repsPerSet || 10, repsExecuted: 0, hardHits: 0, strikeouts: 0, grade: 5 };
@@ -1048,7 +1570,7 @@ const LogSession: React.FC<{
     };
 
     const handleSaveSession = async () => {
-        if (isSaving) return;
+        if (isLoading) return;
         const finalSets = loggedSets.length > 0 ? loggedSets : [createContextualSet(currentSet)];
         await onSave({
             drillId: assignedDrill?.id,
@@ -1062,27 +1584,31 @@ const LogSession: React.FC<{
         <div className="text-center">
             <label className="text-sm font-semibold text-muted-foreground">{label}</label>
             <div className="flex items-center justify-center gap-3 mt-2">
-                <button
+                <Button
                     type="button"
                     disabled={readOnly}
                     onClick={() => onChange(Math.max(0, value - 1))}
-                    className="w-10 h-10 rounded-full bg-muted text-lg font-bold disabled:opacity-50"
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full"
                     aria-label={`Decrease ${label}`}
                 >
                     -
-                </button>
+                </Button>
                 <span className="text-2xl font-bold text-foreground w-12 text-center" aria-live="polite">
                     {value}
                 </span>
-                <button
+                <Button
                     type="button"
                     disabled={readOnly}
                     onClick={() => onChange(max === undefined ? value + 1 : Math.min(max, value + 1))}
-                    className="w-10 h-10 rounded-full bg-muted text-lg font-bold disabled:opacity-50"
+                    variant="ghost"
+                    size="sm"
+                    className="rounded-full"
                     aria-label={`Increase ${label}`}
                 >
                     +
-                </button>
+                </Button>
             </div>
         </div>
     );
@@ -1108,20 +1634,20 @@ const LogSession: React.FC<{
                 <div>
                     <h3 className="font-semibold text-muted-foreground mb-2">Drill Type</h3>
                     <div className="flex flex-wrap gap-2">
-                        {DRILL_TYPES.map(d => <button type="button" key={d} disabled={isAssigned} onClick={() => setDrillType(d)} className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${drillType === d ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{d}</button>)}
+                        {DRILL_TYPES.map(d => <Button type="button" key={d} disabled={isAssigned} onClick={() => setDrillType(d)} variant={drillType === d ? 'primary' : 'ghost'}>{d}</Button>)}
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <h3 className="font-semibold text-muted-foreground mb-2">Target Zone (Optional)</h3>
                         <div className="grid grid-cols-3 gap-2">
-                            {TARGET_ZONES.map(z => <button type="button" key={z} disabled={isAssigned} onClick={() => handleMultiSelect(setTargetZones, z)} className={`p-2 text-xs rounded-md ${targetZones.includes(z) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{z}</button>)}
+                            {TARGET_ZONES.map(z => <Button type="button" key={z} disabled={isAssigned} onClick={() => handleMultiSelect(setTargetZones, z)} variant={targetZones.includes(z) ? 'primary' : 'ghost'} size="sm">{z}</Button>)}
                         </div>
                     </div>
                     <div>
                         <h3 className="font-semibold text-muted-foreground mb-2">Pitch Type (Optional)</h3>
                         <div className="grid grid-cols-3 gap-2">
-                            {PITCH_TYPES.map(p => <button type="button" key={p} disabled={isAssigned} onClick={() => handleMultiSelect(setPitchTypes, p)} className={`p-2 text-xs rounded-md ${pitchTypes.includes(p) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{p}</button>)}
+                            {PITCH_TYPES.map(p => <Button type="button" key={p} disabled={isAssigned} onClick={() => handleMultiSelect(setPitchTypes, p)} variant={pitchTypes.includes(p) ? 'primary' : 'ghost'} size="sm">{p}</Button>)}
                         </div>
                     </div>
                 </div>
@@ -1133,7 +1659,7 @@ const LogSession: React.FC<{
                     <div>
                         <label className="text-sm font-semibold text-muted-foreground">Outs</label>
                         <div className="flex gap-2 mt-2">
-                            {OUTS_OPTIONS.map(o => <button type="button" key={o} disabled={isAssigned} onClick={() => setOuts(o)} className={`flex-1 p-2 text-sm rounded-md ${outs === o ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{o}</button>)}
+                            {OUTS_OPTIONS.map(o => <Button type="button" key={o} disabled={isAssigned} onClick={() => setOuts(o)} variant={outs === o ? 'primary' : 'ghost'} className="flex-1">{o}</Button>)}
                         </div>
                     </div>
                     <div>
@@ -1145,7 +1671,7 @@ const LogSession: React.FC<{
                     <div className="col-span-2">
                         <label className="text-sm font-semibold text-muted-foreground">Base Runners</label>
                         <div className="flex gap-2 mt-2">
-                            {BASE_RUNNERS.map(r => <button type="button" key={r} disabled={isAssigned} onClick={() => handleMultiSelect(setRunners, r)} className={`flex-1 p-2 text-sm rounded-md ${runners.includes(r) ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80 disabled:opacity-70'}`}>{r}</button>)}
+                            {BASE_RUNNERS.map(r => <Button type="button" key={r} disabled={isAssigned} onClick={() => handleMultiSelect(setRunners, r)} variant={runners.includes(r) ? 'primary' : 'ghost'} className="flex-1">{r}</Button>)}
                         </div>
                     </div>
                 </div>
@@ -1201,7 +1727,7 @@ const LogSession: React.FC<{
                     </div>
                 </div>
                 <div className="space-y-2">
-                    <button onClick={handleAddSet} className="w-full bg-primary/20 hover:bg-primary/30 text-primary font-bold py-2 px-4 rounded-lg text-sm">Log Set & Start Next</button>
+                    <Button onClick={handleAddSet} variant="secondary" fullWidth>Log Set & Start Next</Button>
                     <p className="text-xs text-muted-foreground text-center">We’ll stamp each set with the drill info that’s selected when you press the button.</p>
                 </div>
             </div>
@@ -1246,10 +1772,11 @@ const LogSession: React.FC<{
             )}
 
             <div className="flex justify-end gap-4">
-                <button onClick={onCancel} className="bg-muted hover:bg-muted/80 text-foreground font-bold py-2 px-6 rounded-lg">Cancel</button>
-                <button onClick={handleSaveSession} disabled={isSaving} className="bg-secondary hover:bg-secondary/90 disabled:opacity-60 text-secondary-foreground font-bold py-2 px-6 rounded-lg">
-                    {isSaving ? 'Saving…' : 'Save Session'}
-                </button>
+                <CancelButton onClick={onCancel} disabled={isLoading} />
+                <SaveSessionButton
+                    onClick={handleSaveSession}
+                    isLoading={isLoading}
+                />
             </div>
         </div>
     );
@@ -1257,22 +1784,220 @@ const LogSession: React.FC<{
 
 const SessionHistory: React.FC<{
     sessions: Session[];
+    pitchSessions: PitchSession[];
     drills: Drill[];
-    onSelectSession: (session: Session) => void;
+    onSelectSession: (session: Session | PitchSession) => void;
     onEditSession?: (session: Session) => void;
-}> = ({ sessions, drills, onSelectSession, onEditSession }) => {
+    loading?: boolean;
+}> = ({ sessions, pitchSessions, drills, onSelectSession, onEditSession, loading = false }) => {
+    const [sessionFilter, setSessionFilter] = useState<'all' | 'batting' | 'pitching'>('all');
+    const [selectedPitchSession, setSelectedPitchSession] = useState<PitchSession | null>(null);
+
+    /**
+     * Calculate statistics for session history header tiles.
+     * 
+     * This function computes different metrics based on which tab is active:
+     * - All tab: Total sessions, Total batting reps, Total pitches thrown
+     * - Batting tab: Total batting sessions, Total batting reps, Avg Execution %
+     * - Pitching tab: Total pitching sessions, Overall strike %, Avg Accuracy %
+     * 
+     * To customize the metrics shown, modify the calculations below.
+     */
+    const stats = useMemo(() => {
+        // === ALL TAB METRICS ===
+        const totalSessions = sessions.length + pitchSessions.length;
+
+        // Filter for batting sessions (hitting type or no type for backward compatibility)
+        const battingSessions = sessions.filter(s => s.type === 'hitting' || !s.type);
+
+        // Total batting reps across all batting sessions
+        const battingReps = battingSessions
+            .reduce((sum, s) => sum + s.sets.reduce((reps, set) => reps + set.repsAttempted, 0), 0);
+
+        // Total pitches thrown across all pitching sessions
+        const pitchingPitches = pitchSessions.reduce((sum, ps) => sum + (ps.totalPitches || 0), 0);
+
+        // === BATTING TAB METRICS ===
+        const totalBattingSessions = battingSessions.length;
+
+        // Average execution percentage across all batting sessions
+        // Execution % = (total executed reps / total attempted reps) * 100
+        const totalBattingAttempted = battingSessions
+            .reduce((sum, s) => sum + s.sets.reduce((reps, set) => reps + set.repsAttempted, 0), 0);
+        const totalBattingExecuted = battingSessions
+            .reduce((sum, s) => sum + s.sets.reduce((exec, set) => exec + set.repsExecuted, 0), 0);
+        const avgBattingExecution = totalBattingAttempted > 0
+            ? Math.round((totalBattingExecuted / totalBattingAttempted) * 100)
+            : 0;
+
+        // === PITCHING TAB METRICS ===
+        const totalPitchingSessions = pitchSessions.length;
+
+        // Overall strike % = (total strikes across all sessions / total pitches) * 100
+        // We calculate strikes from the strike percentage in analytics
+        const totalStrikes = pitchSessions.reduce((sum, ps) => {
+            const strikePct = ps.analytics?.strikePct || 0;
+            const pitches = ps.totalPitches || 0;
+            return sum + Math.round((strikePct / 100) * pitches);
+        }, 0);
+        const overallStrikePercentage = pitchingPitches > 0
+            ? Math.round((totalStrikes / pitchingPitches) * 100)
+            : 0;
+
+        // Average accuracy/command across all pitching sessions
+        // We use the accuracy hit rate from analytics (% of pitches that hit intended zone)
+        const avgAccuracy = pitchSessions.length > 0
+            ? Math.round(
+                pitchSessions.reduce((sum, ps) => sum + (ps.analytics?.accuracyHitRate || 0), 0)
+                / pitchSessions.length
+            )
+            : 0;
+
+        return {
+            // All tab
+            totalSessions,
+            battingReps,
+            pitchingPitches,
+            // Batting tab
+            totalBattingSessions,
+            avgBattingExecution,
+            // Pitching tab
+            totalPitchingSessions,
+            overallStrikePercentage,
+            avgAccuracy,
+        };
+    }, [sessions, pitchSessions]);
+
+    // Create unified session list
+    const unifiedSessions = useMemo(() => {
+        const hitting = sessions.map(s => ({
+            ...s,
+            sessionType: 'hitting' as const,
+            date: s.date,
+            displayDate: s.date
+        }));
+
+        const pitching = pitchSessions
+            .map(ps => ({
+                id: ps.id,
+                sessionType: 'pitching' as const,
+                name: generatePitchSessionTitle(ps),
+                date: ps.sessionEndTime || ps.createdAt,
+                displayDate: ps.sessionEndTime || ps.createdAt,
+                totalPitches: ps.totalPitches || 0,
+                strikeRate: ps.analytics?.strikePct || 0,
+                pitchSession: ps
+            }));
+
+        return [...hitting, ...pitching].sort((a, b) =>
+            new Date(b.displayDate).getTime() - new Date(a.displayDate).getTime()
+        );
+    }, [sessions, pitchSessions]);
+
+    // Apply filter
+    const filteredSessions = useMemo(() => {
+        if (sessionFilter === 'batting') {
+            return sessions.filter(s => s.type === 'hitting' || !s.type);
+        } else if (sessionFilter === 'pitching') {
+            // Return pitching sessions converted to a display format
+            return unifiedSessions.filter(s => s.sessionType === 'pitching');
+        }
+        return unifiedSessions;
+    }, [sessions, sessionFilter, unifiedSessions]);
+
     return (
-        <div>
+        <div className="space-y-4">
+            {/* Filter Buttons */}
+            <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-semibold text-muted-foreground">Filter:</span>
+                <div className="inline-flex rounded-lg border border-border overflow-hidden">
+                    {(['all', 'batting', 'pitching'] as const).map((filter) => (
+                        <Button
+                            key={filter}
+                            type="button"
+                            onClick={() => setSessionFilter(filter)}
+                            variant={sessionFilter === filter ? 'primary' : 'ghost'}
+                            size="sm"
+                        >
+                            {filter === 'all' ? 'All Sessions' : filter === 'batting' ? 'Batting' : 'Pitching'}
+                        </Button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Summary Statistics - Tab-specific header tiles */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {sessionFilter === 'all' && (
+                    <>
+                        {/* ALL TAB: Total Sessions, Batting Reps, Pitches Thrown */}
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Sessions</p>
+                            <p className="text-3xl font-bold text-foreground">{stats.totalSessions}</p>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Batting Reps</p>
+                            <p className="text-3xl font-bold text-primary">{stats.battingReps.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pitches Thrown</p>
+                            <p className="text-3xl font-bold text-accent">{(stats.pitchingPitches || 0).toLocaleString()}</p>
+                        </div>
+                    </>
+                )}
+
+                {sessionFilter === 'batting' && (
+                    <>
+                        {/* BATTING TAB: Total Batting Sessions, Total Reps, Avg Execution % */}
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Batting Sessions</p>
+                            <p className="text-3xl font-bold text-foreground">{stats.totalBattingSessions}</p>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Reps</p>
+                            <p className="text-3xl font-bold text-primary">{stats.battingReps.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Avg Execution %</p>
+                            <p className="text-3xl font-bold text-primary">{stats.avgBattingExecution}%</p>
+                        </div>
+                    </>
+                )}
+
+                {sessionFilter === 'pitching' && (
+                    <>
+                        {/* PITCHING TAB: Total Pitching Sessions, Overall Strike %, Avg Accuracy % */}
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pitching Sessions</p>
+                            <p className="text-3xl font-bold text-foreground">{stats.totalPitchingSessions}</p>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Overall Strike %</p>
+                            <p className="text-3xl font-bold text-accent">{stats.overallStrikePercentage}%</p>
+                        </div>
+                        <div className="bg-card border border-border rounded-lg p-4 text-center">
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Avg Accuracy %</p>
+                            <p className="text-3xl font-bold text-accent">{stats.avgAccuracy}%</p>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Session List */}
             <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
                 <ul className="divide-y divide-border">
-                    {sessions.length > 0 ? sessions.map(session => {
+                    {loading ? (
+                        <ListSkeleton count={5} />
+                    ) : filteredSessions.length > 0 ? filteredSessions.map((session: any) => {
                         const drill = drills.find(d => d.id === session.drillId);
-                        const progress = drill
-                            ? getSessionGoalProgress(session, drill)
-                            : { value: calculateExecutionPercentage(session.sets), isSuccess: calculateExecutionPercentage(session.sets) >= 70 };
+                        const goalRecords = drill && session.sets ? getSessionGoalProgress(session, drill) : {
+                            isSuccess: false,
+                            goalType: 'Progress',
+                            value: '-',
+                        };
+                        const progress = goalRecords;
+                        const goalType = drill ? drill.goalType : 'Progress';
 
-                        const goalType = drill ? drill.goalType : "Execution %";
-                        const editDescriptor = describeRelativeDay(session.updatedAt);
+                        const editDescriptor = describeRelativeDay(session.updatedAt || session.createdAt);
                         const hasReflection = Boolean(session.reflection && session.reflection.trim().length > 0);
 
                         const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1282,8 +2007,66 @@ const SessionHistory: React.FC<{
                             }
                         };
 
+                        // Check if it's a pitching session
+                        if (session.sessionType === 'pitching') {
+                            const pitches = session.totalPitches || 0;
+                            const strikeRate = session.strikeRate || 0;
+
+                            return (
+                                <li key={session.id} className="bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow animate-fadeInUp">
+                                    <div
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => {
+                                            setSelectedPitchSession(session.pitchSession);
+                                        }}
+                                        onKeyDown={handleKeyDown}
+                                        className="w-full grid gap-4 p-4 items-center md:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr]"
+                                    >
+                                        <div>
+                                            <p className="font-semibold text-primary">{session.name}</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                {(() => {
+                                                    // FIX: Handle date parsing more robustly
+                                                    const dateStr = session.displayDate;
+                                                    if (!dateStr) return 'N/A';
+                                                    const date = new Date(dateStr);
+                                                    if (isNaN(date.getTime())) return 'Invalid Date';
+                                                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                                })()}
+                                            </p>
+                                            <p className="text-xs text-accent mt-1 font-medium">⚾ Pitching Session</p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-sm text-muted-foreground">Pitches</p>
+                                            <p className="font-bold text-lg text-foreground">{pitches}</p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-sm text-muted-foreground">Strike %</p>
+                                            <p className="font-bold text-lg text-foreground">{strikeRate}%</p>
+                                        </div>
+                                        <div className="flex items-center justify-end gap-2 text-sm">
+                                            {/* Notes indicator */}
+                                            {(() => {
+                                                // Check if pitch session has notes (field may be undefined)
+                                                const hasNotes = session.pitchSession?.notes && session.pitchSession.notes.trim().length > 0;
+                                                return (
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${hasNotes ? 'bg-secondary/15 text-secondary' : 'text-muted-foreground'} text-xs`}>
+                                                        <NoteIcon filled={hasNotes} className={hasNotes ? 'text-secondary' : 'text-muted-foreground'} />
+                                                        {hasNotes ? 'Notes added' : 'No notes'}
+                                                    </span>
+                                                );
+                                            })()}
+                                            <span className="text-muted-foreground text-xs">View Details →</span>
+                                        </div>
+                                    </div>
+                                </li>
+                            );
+                        }
+
+                        // Hitting session rendering
                         return (
-                            <li key={session.id} className="hover:bg-muted/40 transition-colors">
+                            <li key={session.id} className="bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow animate-fadeInUp">
                                 <div
                                     role="button"
                                     tabIndex={0}
@@ -1301,12 +2084,17 @@ const SessionHistory: React.FC<{
                                             <p className="text-xs text-muted-foreground mt-2 italic">"{session.reflection}"</p>
                                         )}
                                     </div>
+                                    {/* Total Reps for this session */}
+                                    <div className="text-center">
+                                        <p className="text-sm text-muted-foreground">Total Reps</p>
+                                        <p className="font-bold text-lg text-foreground">
+                                            {session.sets ? session.sets.reduce((sum, set) => sum + set.repsAttempted, 0) : 0}
+                                        </p>
+                                    </div>
+                                    {/* Execution % */}
                                     <div className="text-center">
                                         <p className="text-sm text-muted-foreground">Exec %</p>
-                                        <p className="font-bold text-lg text-foreground">{calculateExecutionPercentage(session.sets)}%</p>
-                                    </div>
-                                    <div className={`text-center px-3 py-1 text-sm font-semibold rounded-full ${progress.isSuccess ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'}`}>
-                                        {goalType}: {progress.value}{drill?.goalType.includes('%') ? '%' : ''}
+                                        <p className="font-bold text-lg text-primary">{session.sets ? calculateExecutionPercentage(session.sets) : 0}%</p>
                                     </div>
                                     <div className="flex items-center justify-end gap-2 text-sm">
                                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${hasReflection ? 'bg-secondary/15 text-secondary' : 'text-muted-foreground'}`}>
@@ -1314,26 +2102,35 @@ const SessionHistory: React.FC<{
                                             {hasReflection ? 'Reflection' : 'No notes'}
                                         </span>
                                         {onEditSession && (
-                                            <button
+                                            <Button
                                                 type="button"
                                                 onClick={(event) => {
                                                     event.stopPropagation();
                                                     onEditSession(session);
                                                 }}
-                                                className="text-xs font-semibold px-3 py-1 rounded-md border border-border hover:bg-muted"
+                                                variant="secondary"
+                                                size="sm"
                                             >
                                                 Edit
-                                            </button>
+                                            </Button>
                                         )}
                                     </div>
                                 </div>
                             </li>
                         );
                     }) : (
-                        <p className="text-center text-muted-foreground p-6">You have not completed any sessions yet.</p>
+                        <NoHistoryEmpty onLogSession={() => { }} />
                     )}
                 </ul>
             </div>
+
+            {/* Pitch Session Detail Modal */}
+            {selectedPitchSession && (
+                <PitchSessionDetailModal
+                    session={selectedPitchSession}
+                    onClose={() => setSelectedPitchSession(null)}
+                />
+            )}
         </div>
     );
 };
@@ -1414,6 +2211,11 @@ const SessionEditForm: React.FC<{
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="border-b border-border pb-4 mb-6">
+                <h2 className="text-2xl font-bold text-foreground">Hitting Session</h2>
+                <p className="text-sm text-muted-foreground">Log your sets and track your progress.</p>
+            </div>
+
             <div className="space-y-2">
                 <label className="text-sm font-semibold text-muted-foreground">Session Title</label>
                 <input
@@ -1430,14 +2232,15 @@ const SessionEditForm: React.FC<{
                         <div className="flex items-center justify-between">
                             <h4 className="font-semibold text-muted-foreground">Set {index + 1}</h4>
                             <div className="flex gap-2">
-                                <button
+                                <Button
                                     type="button"
                                     onClick={() => removeSet(index)}
                                     disabled={editableSets.length === 1}
-                                    className="text-xs font-semibold px-3 py-1 rounded-full border border-border text-muted-foreground disabled:opacity-40"
+                                    variant="secondary"
+                                    size="sm"
                                 >
                                     Remove
-                                </button>
+                                </Button>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -1528,13 +2331,14 @@ const SessionEditForm: React.FC<{
                         </div>
                     </div>
                 ))}
-                <button
+                <Button
                     type="button"
                     onClick={addSet}
-                    className="text-sm font-semibold text-secondary underline"
+                    variant="secondary"
+                    className="w-full"
                 >
-                    + Add another set
-                </button>
+                    + Add Another Set
+                </Button>
             </div>
 
             <div className="space-y-2">
@@ -1549,22 +2353,14 @@ const SessionEditForm: React.FC<{
 
             {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
 
-            <div className="flex justify-end gap-3 pt-2">
-                <button
-                    type="button"
-                    onClick={onCancel}
-                    disabled={isSaving}
-                    className="px-4 py-2 text-sm font-semibold rounded-lg border border-border text-muted-foreground disabled:opacity-50"
-                >
-                    Cancel
-                </button>
-                <button
+            <div className="flex flex-col gap-3 pt-4 border-t border-border">
+                <EndSessionButton
+                    onClick={() => { }} // Form handles submit
+                    isLoading={isSaving}
                     type="submit"
-                    disabled={isSaving}
-                    className="px-5 py-2 text-sm font-bold rounded-lg bg-secondary text-secondary-foreground disabled:opacity-60"
-                >
-                    {isSaving ? 'Saving…' : 'Save changes'}
-                </button>
+                    className="w-full py-4 text-lg"
+                />
+                <CancelButton onClick={onCancel} disabled={isSaving} className="w-full" />
             </div>
         </form>
     );
@@ -1615,12 +2411,12 @@ const JoinTeam: React.FC<{ onSkip: () => void }> = ({ onSkip }) => {
                         onChange={(e) => setCode(e.target.value)}
                         className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-secondary focus:border-secondary sm:text-sm uppercase tracking-widest text-center font-mono"
                     />
-                    <button type="submit" disabled={loading} className="w-full bg-primary text-primary-foreground py-2 rounded-md font-semibold disabled:opacity-50">
-                        {loading ? 'Joining...' : 'Join Team'}
-                    </button>
-                    <button type="button" onClick={onSkip} className="w-full mt-2 text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline">
+                    <Button type="submit" isLoading={loading} fullWidth>
+                        Join Team
+                    </Button>
+                    <Button type="button" onClick={onSkip} variant="link" fullWidth className="mt-2 text-sm text-muted-foreground">
                         Continue to Dashboard
-                    </button>
+                    </Button>
                 </form>
             </div>
         </div>
@@ -1631,6 +2427,7 @@ export const PlayerView: React.FC = () => {
     const [currentView, setCurrentView] = useState('dashboard');
     const {
         currentUser,
+        loading,
         getAssignedDrillsForPlayerToday,
         getSessionsForPlayer,
         getSessionsForTeam,
@@ -1645,6 +2442,9 @@ export const PlayerView: React.FC = () => {
         setRecordSessionIntent,
         getPitchingSessionsForPlayer,
         getPitchingStatsForSessions,
+        createPitchSession,
+        finalizePitchSession,
+        getAllPitchSessionsForPlayer,
     } = useContext(DataContext)!;
 
     const [drillToLog, setDrillToLog] = useState<Drill | null>(null);
@@ -1655,8 +2455,10 @@ export const PlayerView: React.FC = () => {
     const [selectedSession, setSelectedSession] = useState<Session | null>(null);
     const [isUpdatingSession, setIsUpdatingSession] = useState(false);
     const [sessionUpdateError, setSessionUpdateError] = useState<string | null>(null);
-    const [logMode, setLogMode] = useState<'hitting' | 'pitching'>('hitting');
+    const [logMode, setLogMode] = useState<'hitting' | 'pitching' | null>(null);
     const [pitchingFormResetKey, setPitchingFormResetKey] = useState(0);
+    const [activePitchSessionId, setActivePitchSessionId] = useState<string | null>(null);
+    const [pitchSessions, setPitchSessions] = useState<PitchSession[]>([]);
 
     const player = currentUser as Player;
     const [selectedTeamId, setSelectedTeamId] = useState<string | undefined>(player.teamIds[0]);
@@ -1666,6 +2468,7 @@ export const PlayerView: React.FC = () => {
     const [teamJoinStatus, setTeamJoinStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
     const [isJoiningTeam, setIsJoiningTeam] = useState(false);
     const [hasSkippedTeamJoin, setHasSkippedTeamJoin] = useState(false);
+    const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
 
     useEffect(() => {
         if (player.teamIds.length === 0) {
@@ -1677,6 +2480,23 @@ export const PlayerView: React.FC = () => {
         }
     }, [player.teamIds, selectedTeamId]);
 
+    // REMOVED: Auto-create pitch session useEffect - we'll create on demand when pitching mode is shown, player.id, createPitchSession, isSavingSession]);
+
+    // Fetch pitch sessions for analytics
+    useEffect(() => {
+        const fetchPitchSessions = async () => {
+            try {
+                const sessions = await getAllPitchSessionsForPlayer(player.id);
+                setPitchSessions(sessions);
+            } catch (error) {
+                console.error('Error fetching pitch sessions:', error);
+                setPitchSessions([]);
+            }
+        };
+
+        fetchPitchSessions();
+    }, [player.id, getAllPitchSessionsForPlayer]);
+
     useEffect(() => {
         if (!recordSessionIntent) {
             return;
@@ -1686,6 +2506,14 @@ export const PlayerView: React.FC = () => {
         setCurrentView('log_session');
         setRecordSessionIntent(undefined);
     }, [recordSessionIntent, setRecordSessionIntent]);
+
+    const handleSetCurrentView = (view: string) => {
+        if (view === 'log_session') {
+            setLogMode(null);
+            setDrillToLog(null);
+        }
+        setCurrentView(view);
+    };
 
     const handleJoinTeam = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -1719,11 +2547,8 @@ export const PlayerView: React.FC = () => {
     const allTeamDrills = useMemo(() => (selectedTeamId ? getDrillsForTeam(selectedTeamId) : []), [selectedTeamId, getDrillsForTeam]);
     const goals = useMemo(() => getGoalsForPlayer(player.id), [player.id, getGoalsForPlayer]);
     const teamGoals = useMemo(() => (selectedTeamId ? getTeamGoals(selectedTeamId) : []), [selectedTeamId, getTeamGoals]);
-    const pitchingSessions = useMemo(() => {
-        const sessionsForPlayer = getPitchingSessionsForPlayer(player.id, selectedTeamId);
-        return sessionsForPlayer.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [player.id, selectedTeamId, getPitchingSessionsForPlayer]);
-    const pitchingStats = useMemo(() => getPitchingStatsForSessions(pitchingSessions), [pitchingSessions, getPitchingStatsForSessions]);
+    // NOTE: Pitching sessions now use dedicated pitch_sessions table, not the sessions table
+    // Use getAllPitchSessionsForPlayer for real pitching data
 
 
     const handleStartAssignedSession = (drill: Drill) => {
@@ -1743,6 +2568,10 @@ export const PlayerView: React.FC = () => {
     const handleCancelLogSession = () => {
         setLogSessionError(null);
         setIsSavingSession(false);
+        // Clean up active pitch session if exists
+        if (activePitchSessionId) {
+            setActivePitchSessionId(null);
+        }
         setCurrentView('dashboard');
     }
 
@@ -1771,57 +2600,61 @@ export const PlayerView: React.FC = () => {
         }
     };
 
-    const handleLogPitchingSession = async (values: PitchingFormValues) => {
+    // ADDED: Simple pitching session handler - saves directly to pitch_sessions table
+    const handleLogPitchingSession = async (data: {
+        sessionName: string;
+        totalPitches: number;
+        strikes: number;
+        balls: number;
+        notes?: string;
+    }) => {
         if (!selectedTeamId) {
             setLogSessionError('Join a team before logging sessions.');
             return;
         }
 
-        const totalPitches = Math.max(0, values.totalPitches);
-        const strikes = Math.min(totalPitches, Math.max(0, values.strikes));
-        const balls = Math.min(totalPitches, Math.max(0, values.balls));
-        const avgVelocity = values.avgVelocity !== undefined ? Math.max(0, values.avgVelocity) : undefined;
-        const strikePercentage = totalPitches > 0 ? Math.round((strikes / totalPitches) * 100) : 0;
-        const summaryParts = [
-            `Strikes: ${strikes}`,
-            `Balls: ${balls}`,
-            `Strike %: ${strikePercentage}%`,
-        ];
-        if (avgVelocity !== undefined) {
-            summaryParts.push(`Avg Velo: ${avgVelocity} mph`);
-        }
-        if (values.notes?.trim()) {
-            summaryParts.push(`Notes: ${values.notes.trim()}`);
-        }
-        const combinedNotes = summaryParts.join(' | ');
-
         setIsSavingSession(true);
         setLogSessionError(null);
 
         try {
-            const newSession = await logSession({
-                name: 'Pitching Session',
-                teamId: selectedTeamId,
-                type: 'pitching',
-                sets: [
-                    {
-                        setNumber: 1,
-                        repsAttempted: totalPitches,
-                        repsExecuted: strikes,
-                        hardHits: 0,
-                        strikeouts: balls,
-                        grade: strikePercentage > 0 ? Math.min(10, Math.max(1, Math.round(strikePercentage / 10))) : undefined,
-                        notes: combinedNotes,
-                        drillLabel: 'Pitching Session',
-                    },
-                ],
-                reflection: values.notes?.trim() || undefined,
-            });
+            // Create pitch session using DataContext method
+            const sessionId = await createPitchSession(
+                player.id,
+                selectedTeamId,
+                data.sessionName,
+                'mix', // default session type
+                false, // game situation disabled
+                [] // no specific pitch goals
+            );
 
-            if (newSession) {
-                setLastSavedSession(newSession);
-                setPitchingFormResetKey((prev) => prev + 1);
-            }
+            // Since we're logging summary data (not individual pitches),
+            // we need to manually update totalPitches before finalizing
+            const { default: { createClient } } = await import('@supabase/supabase-js');
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+            const supabase = createClient(supabaseUrl, supabaseKey);
+
+            await supabase
+                .from('pitch_sessions')
+                .update({
+                    total_pitches: data.totalPitches,
+                    session_end_time: new Date().toISOString(),
+                })
+                .eq('id', sessionId);
+
+            // Finalize the session to calculate rest requirements
+            await finalizePitchSession(sessionId);
+
+            // Refresh data and show success
+            setLastSavedSession({
+                id: sessionId,
+                playerId: player.id,
+                name: data.sessionName,
+                teamId: selectedTeamId,
+                date: new Date().toISOString(),
+                sets: [],
+                createdAt: new Date().toISOString(),
+            });
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Unable to save this session. Please try again.';
             setLogSessionError(message);
@@ -1867,9 +2700,9 @@ export const PlayerView: React.FC = () => {
     };
 
     const navItems = [
-        { name: 'Dashboard', icon: <HomeIcon />, view: 'dashboard' },
-        { name: 'Log Session', icon: <PencilIcon />, view: 'log_session' },
+        { name: 'Home', icon: <HomeIcon />, view: 'dashboard' },
         { name: 'History', icon: <ClipboardListIcon />, view: 'history' },
+        { name: 'Log Session', icon: <PlusIcon />, view: 'log_session' },
         { name: 'Analytics', icon: <ChartBarIcon />, view: 'analytics' },
         { name: 'Profile', icon: <ProfileIcon />, view: 'profile' },
     ];
@@ -1982,20 +2815,12 @@ export const PlayerView: React.FC = () => {
 
     const headerContent = (
         <div className="flex flex-wrap gap-3">
-            {currentView === 'dashboard' && (
-                <button
-                    onClick={handleStartAdHocSession}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-2 px-4 rounded-lg text-sm shadow-sm transition-transform hover:scale-105"
-                >
-                    Start Ad-Hoc Session
-                </button>
-            )}
-            <button
+            <Button
                 onClick={() => setIsManageTeamsOpen(true)}
-                className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-2 px-4 rounded-lg text-sm"
+                variant="secondary"
             >
                 Manage Teams
-            </button>
+            </Button>
         </div>
     );
 
@@ -2004,6 +2829,10 @@ export const PlayerView: React.FC = () => {
             case 'dashboard':
                 return (
                     <div className="space-y-6">
+                        {/* Pitching Rest Status Card */}
+                        <PitchRestCard playerId={player.id} />
+
+                        {/* Main Dashboard Content */}
                         <PlayerDashboard
                             player={player}
                             assignedDrills={assignedDrills}
@@ -2014,8 +2843,10 @@ export const PlayerView: React.FC = () => {
                             teamSessions={teamSessions}
                             onStartAssignedSession={handleStartAssignedSession}
                             activeTeamId={selectedTeamId}
+                            loading={loading}
+                            pitchSessions={pitchSessions}
                         />
-                        <PitchingOverviewCard stats={pitchingStats} sessions={pitchingSessions} />
+                        {/* REMOVED: PitchingOverviewCard - Use new Bullpen/PitchTracker UI for pitching sessions */}
                     </div>
                 );
             case 'log_session':
@@ -2023,7 +2854,7 @@ export const PlayerView: React.FC = () => {
                     <div className="space-y-6">
                         <div className="inline-flex rounded-full border border-border overflow-hidden">
                             {(['hitting', 'pitching'] as const).map((mode) => (
-                                <button
+                                <Button
                                     key={mode}
                                     type="button"
                                     onClick={() => {
@@ -2033,11 +2864,10 @@ export const PlayerView: React.FC = () => {
                                             setDrillToLog(null);
                                         }
                                     }}
-                                    className={`px-4 py-2 text-sm font-semibold transition-colors ${logMode === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-                                        }`}
+                                    variant={logMode === mode ? 'primary' : 'ghost'}
                                 >
                                     {mode === 'hitting' ? 'Hitting Session' : 'Pitching Session'}
-                                </button>
+                                </Button>
                             ))}
                         </div>
                         {logMode === 'hitting' ? (
@@ -2045,17 +2875,51 @@ export const PlayerView: React.FC = () => {
                                 assignedDrill={drillToLog}
                                 onSave={handleLogHittingSession}
                                 onCancel={handleCancelLogSession}
-                                isSaving={isSavingSession}
+                                isLoading={isSavingSession}
                                 errorMessage={logSessionError}
+                            />
+                        ) : logMode === 'pitching' ? (
+                            <PitchingSessionFlow
+                                player={player}
+                                selectedTeamId={selectedTeamId}
+                                activePitchSessionId={activePitchSessionId}
+                                setActivePitchSessionId={setActivePitchSessionId}
+                                onCancel={handleCancelLogSession}
+                                createPitchSession={createPitchSession}
                             />
                         ) : (
-                            <PitchingSessionForm
-                                onSave={handleLogPitchingSession}
-                                onCancel={handleCancelLogSession}
-                                isSaving={isSavingSession}
-                                errorMessage={logSessionError}
-                                resetKey={pitchingFormResetKey}
-                            />
+                            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
+                                <div className="text-center space-y-2">
+                                    <h2 className="text-2xl font-bold text-foreground">Start a Session</h2>
+                                    <p className="text-muted-foreground">What are you working on today?</p>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-lg px-4">
+                                    <button
+                                        onClick={() => setLogMode('hitting')}
+                                        className="flex flex-col items-center justify-center p-8 space-y-4 bg-card border-2 border-border hover:border-primary hover:bg-accent/50 rounded-xl transition-all group"
+                                    >
+                                        <div className="p-4 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                                            <span className="text-4xl">⚾️</span>
+                                        </div>
+                                        <div className="text-center">
+                                            <h3 className="text-lg font-bold text-foreground">Hitting</h3>
+                                            <p className="text-sm text-muted-foreground">Log swings & drills</p>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => setLogMode('pitching')}
+                                        className="flex flex-col items-center justify-center p-8 space-y-4 bg-card border-2 border-border hover:border-primary hover:bg-accent/50 rounded-xl transition-all group"
+                                    >
+                                        <div className="p-4 rounded-full bg-secondary/10 group-hover:bg-secondary/20 transition-colors">
+                                            <span className="text-4xl">🎯</span>
+                                        </div>
+                                        <div className="text-center">
+                                            <h3 className="text-lg font-bold text-foreground">Pitching</h3>
+                                            <p className="text-sm text-muted-foreground">Track bullpen sessions</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
                         )}
                     </div>
                 );
@@ -2063,60 +2927,15 @@ export const PlayerView: React.FC = () => {
                 return (
                     <SessionHistory
                         sessions={sessions}
+                        pitchSessions={pitchSessions}
                         drills={allTeamDrills}
                         onSelectSession={handleOpenSessionDetail}
                         onEditSession={handleOpenSessionEditor}
+                        loading={loading}
                     />
                 );
             case 'analytics':
-                return (
-                    <div className="space-y-8">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <div className="lg:col-span-1 flex flex-col gap-4">
-                                <KPICard title="Overall Execution %" value={`${analyticsData.kpi.execPct}%`} description="Successfully executed reps vs. total reps." />
-                                <KPICard title="Overall Hard Hit %" value={`${analyticsData.kpi.hardHitPct}%`} description="Percentage of reps hit hard." />
-                                <KPICard title="Overall Contact %" value={`${analyticsData.kpi.contactPct}%`} description="Percentage of reps without a strikeout." />
-                            </div>
-                            <div className="lg:col-span-2">
-                                <PlayerRadarChart sessions={sessions} playerName={player.name} />
-                            </div>
-                        </div>
-
-                        <AnalyticsCharts
-                            performanceOverTimeData={analyticsData.performanceOverTimeData}
-                            drillSuccessData={analyticsData.drillSuccessData}
-                        />
-
-                        <div>
-                            <h2 className="text-2xl font-bold text-foreground mb-4">Performance Breakdowns</h2>
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
-                                <div className="lg:col-span-1">
-                                    <StrikeZoneHeatmap data={analyticsData.byZoneData} battingSide={player.profile.bats} />
-                                </div>
-                                <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 content-start">
-                                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                                        <h3 className="text-lg font-bold text-primary mb-4">By Drill Type</h3>
-                                        <div className="space-y-4">
-                                            {analyticsData.byDrillTypeData.length > 0 ? analyticsData.byDrillTypeData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} />) : <p className="text-muted-foreground text-center py-4">No data available.</p>}
-                                        </div>
-                                    </div>
-                                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                                        <h3 className="text-lg font-bold text-primary mb-4">By Pitch Type</h3>
-                                        <div className="space-y-4">
-                                            {analyticsData.byPitchTypeData.length > 0 ? analyticsData.byPitchTypeData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-accent" />) : <p className="text-muted-foreground text-center py-4">Log pitch types to see this breakdown.</p>}
-                                        </div>
-                                    </div>
-                                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm md:col-span-2">
-                                        <h3 className="text-lg font-bold text-primary mb-4">By Count</h3>
-                                        <div className="space-y-4">
-                                            {analyticsData.byCountData.length > 0 ? analyticsData.byCountData.map(d => <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-secondary" />) : <p className="text-muted-foreground text-center py-4">No data available.</p>}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
+                return <PlayerAnalyticsTab sessions={sessions} pitchSessions={pitchSessions} player={player} drills={allTeamDrills} />;
             case 'profile':
                 return <ProfileTab />;
             default:
@@ -2129,12 +2948,13 @@ export const PlayerView: React.FC = () => {
             <Dashboard
                 navItems={navItems}
                 currentView={currentView}
-                setCurrentView={setCurrentView}
+                setCurrentView={handleSetCurrentView}
                 pageTitle={pageTitles[currentView]}
                 headerContent={headerContent}
             >
                 {renderContent()}
             </Dashboard>
+            {isRecordModalOpen && <RecordSessionModal onClose={() => setIsRecordModalOpen(false)} />}
             <Modal
                 isOpen={!!sessionToEdit}
                 onClose={handleCloseSessionEditor}
@@ -2197,13 +3017,14 @@ export const PlayerView: React.FC = () => {
                             <p className={`text-sm ${teamJoinStatus.type === 'success' ? 'text-success' : 'text-destructive'}`}>{teamJoinStatus.message}</p>
                         )}
                         <div className="flex gap-2">
-                            <button
+                            <Button
                                 type="submit"
+                                isLoading={isJoiningTeam}
+                                className="flex-1"
                                 disabled={isJoiningTeam}
-                                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-2 px-4 rounded-lg text-sm transition disabled:opacity-50"
                             >
                                 {isJoiningTeam ? 'Joining...' : 'Join Team'}
-                            </button>
+                            </Button>
                             {teamJoinStatus?.type === 'success' && (
                                 <button
                                     type="button"

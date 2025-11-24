@@ -192,51 +192,51 @@ export const Onboarding: React.FC = () => {
   };
 
   const renderProfileStep = () => (
-    <form className="space-y-6" onSubmit={handleProfileSubmit}>
-      {error && <p className="text-center text-destructive">{error}</p>}
+    <form className="space-y-6 animate-fadeIn" onSubmit={handleProfileSubmit}>
+      {error && <p className="text-center text-destructive animate-fadeIn">{error}</p>}
 
-      <div>
+      <div className="animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
         <label htmlFor="full-name" className="block text-sm font-medium text-foreground">Full Name</label>
         <input
           id="full-name"
           type="text"
           required
-          className="mt-1 appearance-none relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+          className="mt-1 appearance-none relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-all duration-200 focus:ring-2 focus:ring-offset-1"
           placeholder="e.g. John Doe"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
       </div>
 
-      <div>
+      <div className="animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
         <label className="block text-sm font-medium text-foreground">I am a...</label>
         <div className="mt-2 grid grid-cols-2 gap-3">
-          <button type="button" onClick={() => setRole(UserRole.Player)} className={`py-3 px-4 rounded-lg font-semibold transition-colors ${role === UserRole.Player ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>Player</button>
-          <button type="button" onClick={() => setRole(UserRole.Coach)} className={`py-3 px-4 rounded-lg font-semibold transition-colors ${role === UserRole.Coach ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}>Coach</button>
+          <button type="button" onClick={() => setRole(UserRole.Player)} className={`py-3 px-4 rounded-lg font-semibold transition-all duration-200 hover-scale active-press ${role === UserRole.Player ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted hover:bg-muted/80'}`}>Player</button>
+          <button type="button" onClick={() => setRole(UserRole.Coach)} className={`py-3 px-4 rounded-lg font-semibold transition-all duration-200 hover-scale active-press ${role === UserRole.Coach ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted hover:bg-muted/80'}`}>Coach</button>
         </div>
       </div>
 
       {role === UserRole.Player && (
-        <div className="space-y-4 p-4 border border-border rounded-lg">
+        <div className="space-y-4 p-4 border border-border rounded-lg animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
           <h3 className="font-semibold text-foreground">Player Details</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-muted-foreground">Grad Year</label>
-              <input type="number" value={playerProfile.gradYear} onChange={e => handleProfileChange('gradYear', parseInt(e.target.value))} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm" />
+              <input type="number" value={playerProfile.gradYear} onChange={e => handleProfileChange('gradYear', parseInt(e.target.value))} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm transition-all duration-200 focus:ring-2 focus:ring-primary/50" />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground">Position</label>
-              <input type="text" value={playerProfile.position} onChange={e => handleProfileChange('position', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm" />
+              <input type="text" value={playerProfile.position} onChange={e => handleProfileChange('position', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm transition-all duration-200 focus:ring-2 focus:ring-primary/50" />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground">Bats</label>
-              <select value={playerProfile.bats} onChange={e => handleProfileChange('bats', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm">
+              <select value={playerProfile.bats} onChange={e => handleProfileChange('bats', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm transition-all duration-200 focus:ring-2 focus:ring-primary/50">
                 <option>R</option><option>L</option><option>S</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground">Throws</label>
-              <select value={playerProfile.throws} onChange={e => handleProfileChange('throws', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm">
+              <select value={playerProfile.throws} onChange={e => handleProfileChange('throws', e.target.value)} className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm transition-all duration-200 focus:ring-2 focus:ring-primary/50">
                 <option>R</option><option>L</option>
               </select>
             </div>
@@ -244,8 +244,8 @@ export const Onboarding: React.FC = () => {
         </div>
       )}
 
-      <div>
-        <button type="submit" disabled={loading} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50">
+      <div className="animate-fadeInUp" style={{ animationDelay: role === UserRole.Player ? '0.4s' : '0.3s' }}>
+        <button type="submit" disabled={loading} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50 hover-scale active-press transition-smooth shadow-sm hover:shadow-md">
           {loading ? loadingLabel ?? 'Saving...' : role === UserRole.Coach ? 'Save & Create Team' : 'Complete Profile'}
         </button>
       </div>
@@ -253,9 +253,9 @@ export const Onboarding: React.FC = () => {
   );
 
   const renderTeamStep = () => (
-    <div className="space-y-6">
-      {error && <p className="text-center text-destructive">{error}</p>}
-      <div>
+    <div className="space-y-6 animate-fadeIn">
+      {error && <p className="text-center text-destructive animate-fadeIn">{error}</p>}
+      <div className="animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
         <h2 className="text-2xl font-semibold text-foreground text-center">
           {coachTeamAction === 'create' ? 'Create Your Team' : 'Join an Existing Team'}
         </h2>
@@ -266,11 +266,11 @@ export const Onboarding: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
         <button
           type="button"
           onClick={() => handleTeamModeChange('create')}
-          className={`py-3 px-4 rounded-lg font-semibold transition-colors ${coachTeamAction === 'create' ? 'bg-secondary text-secondary-foreground' : 'bg-muted hover:bg-muted/80'
+          className={`py-3 px-4 rounded-lg font-semibold transition-all duration-200 hover-scale active-press ${coachTeamAction === 'create' ? 'bg-secondary text-secondary-foreground shadow-md' : 'bg-muted hover:bg-muted/80'
             }`}
         >
           Create new team
@@ -278,7 +278,7 @@ export const Onboarding: React.FC = () => {
         <button
           type="button"
           onClick={() => handleTeamModeChange('join')}
-          className={`py-3 px-4 rounded-lg font-semibold transition-colors ${coachTeamAction === 'join' ? 'bg-secondary text-secondary-foreground' : 'bg-muted hover:bg-muted/80'
+          className={`py-3 px-4 rounded-lg font-semibold transition-all duration-200 hover-scale active-press ${coachTeamAction === 'join' ? 'bg-secondary text-secondary-foreground shadow-md' : 'bg-muted hover:bg-muted/80'
             }`}
         >
           Join with code
@@ -286,13 +286,13 @@ export const Onboarding: React.FC = () => {
       </div>
 
       {coachTeamAction === 'create' ? (
-        <form className="space-y-6" onSubmit={handleTeamSubmit}>
+        <form className="space-y-6 animate-fadeInUp" style={{ animationDelay: '0.3s' }} onSubmit={handleTeamSubmit}>
           <div>
             <label className="block text-sm font-medium text-foreground">Team Name</label>
             <input
               type="text"
               required
-              className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm"
+              className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm transition-all duration-200 focus:ring-2 focus:ring-secondary/50"
               placeholder="e.g. SCN Eagles"
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
@@ -304,7 +304,7 @@ export const Onboarding: React.FC = () => {
             <input
               type="number"
               required
-              className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm"
+              className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm transition-all duration-200 focus:ring-2 focus:ring-secondary/50"
               value={teamYear}
               min={2000}
               max={2100}
@@ -320,7 +320,7 @@ export const Onboarding: React.FC = () => {
                   type="button"
                   key={color}
                   onClick={() => setTeamColor(color)}
-                  className={`h-10 w-10 rounded-full border-2 transition-shadow ${teamColor === color ? 'border-secondary shadow-glow-primary' : 'border-border'
+                  className={`h-10 w-10 rounded-full border-2 transition-all duration-200 hover:scale-110 ${teamColor === color ? 'border-secondary shadow-glow-primary scale-110' : 'border-border'
                     }`}
                   style={{ backgroundColor: color }}
                 >
@@ -333,7 +333,7 @@ export const Onboarding: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
+            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50 hover-scale active-press transition-smooth shadow-sm hover:shadow-md"
           >
             {loading ? loadingLabel ?? 'Creating team...' : 'Create Team'}
           </button>
@@ -341,20 +341,20 @@ export const Onboarding: React.FC = () => {
             type="button"
             onClick={handleSkipTeamCreation}
             disabled={loading}
-            className="w-full text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            className="w-full text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
           >
             Continue without creating a team
           </button>
         </form>
       ) : (
-        <form className="space-y-6" onSubmit={handleJoinTeamSubmit}>
+        <form className="space-y-6 animate-fadeInUp" style={{ animationDelay: '0.3s' }} onSubmit={handleJoinTeamSubmit}>
           <div>
             <label className="block text-sm font-medium text-foreground">Team Code</label>
             <input
               type="text"
               required
               maxLength={10}
-              className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm uppercase tracking-widest text-center font-mono"
+              className="mt-1 w-full bg-background border-input rounded-md py-2 px-3 text-sm uppercase tracking-widest text-center font-mono transition-all duration-200 focus:ring-2 focus:ring-secondary/50"
               placeholder="ABCDE123"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
@@ -366,7 +366,7 @@ export const Onboarding: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
+            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50 hover-scale active-press transition-smooth shadow-sm hover:shadow-md"
           >
             {loading ? loadingLabel ?? 'Joining team...' : 'Join Team as Coach'}
           </button>
@@ -374,7 +374,7 @@ export const Onboarding: React.FC = () => {
             type="button"
             onClick={handleSkipTeamCreation}
             disabled={loading}
-            className="w-full text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            className="w-full text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
           >
             Continue without joining a team
           </button>
@@ -391,16 +391,16 @@ export const Onboarding: React.FC = () => {
   };
 
   const renderCodeCard = (label: string, code: string | null, type: 'player' | 'coach') => (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-4 bg-card text-left">
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-4 bg-card text-left hover-lift transition-smooth">
       <div className="flex items-center justify-between">
         <span className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
-        {copiedCodeType === type && <span className="text-xs font-semibold text-success">Copied!</span>}
+        {copiedCodeType === type && <span className="text-xs font-semibold text-success animate-fadeIn">Copied!</span>}
       </div>
       <span className="text-3xl font-mono tracking-widest text-secondary">{code || '...'}</span>
       <button
         onClick={() => handleCopyTeamCode(code, type)}
         disabled={!code}
-        className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md text-sm font-semibold disabled:opacity-50"
+        className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md text-sm font-semibold disabled:opacity-50 hover:bg-primary/90 transition-colors active-press"
       >
         Copy {label}
       </button>
@@ -408,40 +408,44 @@ export const Onboarding: React.FC = () => {
   );
 
   const renderCodeStep = () => (
-    <div className="space-y-6 text-center">
-      {error && <p className="text-center text-destructive">{error}</p>}
-      <h2 className="text-2xl font-semibold text-foreground">Team Ready!</h2>
-      <p className="text-muted-foreground">
-        Share the player code with your team and the coach code with assistants.
-      </p>
+    <div className="space-y-6 text-center animate-fadeIn">
+      {error && <p className="text-center text-destructive animate-fadeIn">{error}</p>}
+      <div className="animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
+        <h2 className="text-2xl font-semibold text-foreground">Team Ready!</h2>
+        <p className="text-muted-foreground">
+          Share the player code with your team and the coach code with assistants.
+        </p>
+      </div>
       {teamCodes ? (
-        <div className="grid gap-4 md:grid-cols-2 text-left">
+        <div className="grid gap-4 md:grid-cols-2 text-left animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
           {renderCodeCard('Player Code', teamCodes.playerCode, 'player')}
           {renderCodeCard('Coach Code', teamCodes.coachCode, 'coach')}
         </div>
       ) : (
-        <p className="text-sm text-destructive">We couldn't generate invite codes. You can refresh or create them from the dashboard later.</p>
+        <p className="text-sm text-destructive animate-fadeIn">We couldn't generate invite codes. You can refresh or create them from the dashboard later.</p>
       )}
-      <button
-        type="button"
-        disabled={loading}
-        onClick={handleFinish}
-        className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
-      >
-        {loading ? loadingLabel ?? 'Finishing...' : 'Go to Dashboard'}
-      </button>
+      <div className="animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={handleFinish}
+          className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50 hover-scale active-press transition-smooth shadow-sm hover:shadow-md"
+        >
+          {loading ? loadingLabel ?? 'Finishing...' : 'Go to Dashboard'}
+        </button>
+      </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="relative w-full max-w-lg p-8 space-y-6 bg-card border border-border rounded-lg shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 animate-fadeIn">
+      <div className="relative w-full max-w-lg p-8 space-y-6 bg-card border border-border rounded-lg shadow-lg animate-scaleIn transition-all duration-500">
         {context?.logout && (
           <button
             type="button"
             onClick={handleExitOnboarding}
             aria-label="Return to sign up"
-            className="absolute top-4 right-4 text-xl font-bold leading-none text-muted-foreground hover:text-foreground"
+            className="absolute top-4 right-4 text-xl font-bold leading-none text-muted-foreground hover:text-foreground hover:scale-110 transition-transform"
           >
             ×
           </button>

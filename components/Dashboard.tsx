@@ -2,7 +2,8 @@ import React, { useContext, useState } from 'react';
 import { DataContext } from '../contexts/DataContext';
 import { LogoutIcon } from './icons/LogoutIcon';
 import { Team, UserRole } from '../types';
-import { RecordSessionModal } from './RecordSessionModal';
+import { BottomNav } from './BottomNav';
+import { TopNav } from './TopNav';
 
 interface SidebarNavProps {
   navItems: { name: string; icon: React.ReactNode; view: string }[];
@@ -21,11 +22,10 @@ const SidebarNav: React.FC<SidebarNavProps> = ({ navItems, currentView, setCurre
             e.preventDefault();
             setCurrentView(item.view);
           }}
-          className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-            currentView === item.view
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
+          className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${currentView === item.view
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
         >
           {item.icon}
           <span className="ml-3">{item.name}</span>
@@ -88,18 +88,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const { currentUser, logout } = useContext(DataContext)!;
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
 
-  const SideContent = () => (
+  const isPlayer = currentUser?.role === UserRole.Player;
+
+  const SideContent = ({ onItemClick }: { onItemClick?: () => void }) => (
     <>
-      <div className="flex items-center justify-center h-16 flex-shrink-0 px-4">
-        <h1 className="text-xl font-bold text-foreground">⚾ SCN HitJournal</h1>
+      <div className="flex items-center justify-center h-16 flex-shrink-0 px-4 gap-2">
+        <img src="/dt-logo.jpg" alt="DT Logo" className="h-10 w-10 rounded-lg" />
+        <h1 className="text-xl font-bold text-foreground">Diamond Tracker</h1>
       </div>
       <div className="mt-5 flex-1 flex flex-col">
         {teams && activeTeamId && setActiveTeamId && (
           <TeamSwitcher teams={teams} activeTeamId={activeTeamId} setActiveTeamId={setActiveTeamId} />
         )}
-        <SidebarNav navItems={navItems} currentView={currentView} setCurrentView={setCurrentView} />
+        <SidebarNav
+          navItems={navItems}
+          currentView={currentView}
+          setCurrentView={(view) => {
+            setCurrentView(view);
+            if (onItemClick) onItemClick();
+          }}
+        />
       </div>
       <div className="flex-shrink-0 flex border-t border-border p-4">
         <div className="flex-shrink-0 w-full group block">
@@ -120,78 +129,118 @@ export const Dashboard: React.FC<DashboardProps> = ({
     </>
   );
 
-  return (
-    <>
-    <div className="relative min-h-screen">
-      {/* Mobile sidebar */}
-      <div className={`fixed inset-0 flex z-40 md:hidden ${sidebarOpen ? '' : 'hidden'}`}>
-        <div className="fixed inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
-        <div className="relative flex-1 flex flex-col max-w-xs w-full bg-background border-r border-border">
-          <div className="absolute top-0 right-0 -mr-12 pt-2">
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
-              aria-label="Close sidebar"
-            >
-              <span className="sr-only">Close sidebar</span>
-              <span className="text-white text-2xl">&times;</span>
-            </button>
-          </div>
-          <SideContent />
-        </div>
-      </div>
-
-      {/* Static sidebar for desktop */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
-        <div className="flex flex-col flex-grow bg-background border-r border-border pt-5 overflow-y-auto">
-          <SideContent />
-        </div>
-      </div>
-
-      <div className="md:pl-64 flex flex-col flex-1">
+  if (isPlayer) {
+    return (
+      <div className="relative min-h-screen pb-20"> {/* Added padding-bottom for BottomNav */}
         <header className="sticky top-0 z-10 flex h-16 flex-shrink-0 border-b border-border bg-background/95 backdrop-blur-sm">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="border-r border-border px-4 text-muted-foreground focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary md:hidden"
-            aria-label="Open sidebar"
-          >
-            <span className="sr-only">Open sidebar</span>
-            <svg
-              className="h-6 w-6"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <div className="flex flex-1 items-center justify-between px-4 sm:px-6 lg:px-8">
-            <h1 className="text-xl font-semibold text-foreground">{pageTitle}</h1>
-            <div className="flex items-center gap-4">{headerContent}</div>
+          <div className="flex flex-1 items-center justify-between px-4">
+            {/* Logo for player view since sidebar is gone */}
+            <div className="flex items-center gap-2">
+              <img src="/dt-logo.jpg" alt="DT Logo" className="h-8 w-8 rounded-lg" />
+              <h1 className="text-lg font-semibold text-foreground">{pageTitle}</h1>
+            </div>
+            <div className="flex items-center gap-4">
+              {headerContent}
+              <button
+                onClick={logout}
+                className="p-2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <LogoutIcon className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </header>
 
         <main className="flex-1">
-          <div className="py-8">
-            <div className="container">{children}</div>
+          <div className="py-4 px-4">
+            {children}
           </div>
         </main>
+
+        <BottomNav
+          navItems={navItems}
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+        />
       </div>
+    );
+  }
+
+  // Coach view with horizontal top navigation
+  return (
+    <div className="relative min-h-screen">
+      <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
+        <div className="container">
+          <div className="flex h-16 items-center justify-between">
+            {/* Logo and Title */}
+            <div className="flex items-center gap-3">
+              <img src="/dt-logo.jpg" alt="DT Logo" className="h-9 w-9 rounded-lg" />
+              <h1 className="text-xl font-bold text-foreground hidden sm:block">Diamond Tracker</h1>
+            </div>
+
+            {/* Team Switcher and Actions */}
+            <div className="flex items-center gap-3">
+              {teams && activeTeamId && setActiveTeamId && (
+                <select
+                  value={activeTeamId}
+                  onChange={(e) => setActiveTeamId(e.target.value)}
+                  className="bg-muted border border-border text-foreground text-sm rounded-lg focus:ring-primary focus:border-primary px-3 py-2"
+                >
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {headerContent}
+
+              <button
+                onClick={logout}
+                className="p-2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                aria-label="Logout"
+              >
+                <LogoutIcon className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Horizontal Navigation */}
+        <TopNav
+          navItems={navItems}
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+        />
+      </header>
+
+      <main className="flex-1">
+        <div className="py-8">
+          <div className="container">
+            {/* Page Title */}
+            <h2 className="text-2xl font-bold text-foreground mb-6">{pageTitle}</h2>
+
+            {children}
+          </div>
+        </div>
+      </main>
+
+      {/* Footer with user info (optional) */}
+      <footer className="border-t border-border bg-card/50 py-4 mt-auto">
+        <div className="container">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-foreground">{currentUser?.name}</span>
+              <span>·</span>
+              <span>{currentUser?.role}</span>
+            </div>
+            <div className="text-xs">
+              © {new Date().getFullYear()} Diamond Tracker
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
-    {currentUser?.role === UserRole.Player && (
-      <>
-        <button
-          type="button"
-          onClick={() => setIsRecordModalOpen(true)}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 rounded-full px-6 py-3 bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/60"
-        >
-          Record Session
-        </button>
-        {isRecordModalOpen && <RecordSessionModal onClose={() => setIsRecordModalOpen(false)} />}
-      </>
-    )}
-    </>
   );
 };

@@ -3,6 +3,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { DataProvider } from './contexts/DataContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './components/ToastProvider';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -12,8 +14,12 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <DataProvider>
-      <App />
-    </DataProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <DataProvider>
+          <App />
+        </DataProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

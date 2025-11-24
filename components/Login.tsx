@@ -78,22 +78,22 @@ export const Login: React.FC = () => {
   };
 
   const toggleAuthMode = () => {
-      setAuthMode(prev => prev === 'signUp' ? 'signIn' : 'signUp');
-      setError('');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
+    setAuthMode(prev => prev === 'signUp' ? 'signIn' : 'signUp');
+    setError('');
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
   }
 
   const handleDevLogin = (role: UserRole) => {
     if (context && context.setDevUser) {
-        context.setDevUser(role);
+      context.setDevUser(role);
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md p-8 space-y-8 bg-card border border-border rounded-lg shadow-lg">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 animate-fadeIn">
+      <div className="w-full max-w-md p-8 space-y-8 bg-card border border-border rounded-lg shadow-lg animate-scaleIn transition-all duration-500">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold text-foreground">
@@ -102,7 +102,7 @@ export const Login: React.FC = () => {
             <button
               type="button"
               onClick={toggleAuthMode}
-              className="text-sm font-medium text-secondary hover:text-secondary/80 underline-offset-4 hover:underline"
+              className="text-sm font-medium text-secondary hover:text-secondary/80 underline-offset-4 hover:underline transition-colors duration-200"
             >
               {authMode === 'signUp' ? 'Back to Sign In' : 'Create Account'}
             </button>
@@ -115,7 +115,7 @@ export const Login: React.FC = () => {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && <p className="text-center text-destructive">{error}</p>}
+          {error && <p className="text-center text-destructive animate-fadeIn">{error}</p>}
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className="sr-only">Email address</label>
@@ -125,7 +125,7 @@ export const Login: React.FC = () => {
                 type="email"
                 autoComplete="email"
                 required
-                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-all duration-200 focus:ring-2 focus:ring-offset-1"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -139,14 +139,14 @@ export const Login: React.FC = () => {
                 type="password"
                 autoComplete={authMode === 'signUp' ? 'new-password' : 'current-password'}
                 required
-                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-all duration-200 focus:ring-2 focus:ring-offset-1"
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
             {authMode === 'signUp' && (
-              <div>
+              <div className="animate-fadeIn">
                 <label htmlFor="confirm-password" className="sr-only">Confirm password</label>
                 <input
                   id="confirm-password"
@@ -154,7 +154,7 @@ export const Login: React.FC = () => {
                   type="password"
                   autoComplete="new-password"
                   required
-                  className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                  className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-all duration-200 focus:ring-2 focus:ring-offset-1"
                   placeholder="Confirm password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
@@ -165,7 +165,7 @@ export const Login: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50"
+            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-secondary-foreground bg-secondary hover:bg-secondary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-secondary focus:ring-offset-background disabled:opacity-50 hover-scale active-press transition-smooth shadow-sm hover:shadow-md"
           >
             {loading
               ? authMode === 'signUp'
@@ -180,9 +180,8 @@ export const Login: React.FC = () => {
         <div className="space-y-2">
           {resetStatus && (
             <p
-              className={`text-sm ${
-                resetStatus.type === 'success' ? 'text-success' : 'text-destructive'
-              }`}
+              className={`text-sm animate-fadeIn ${resetStatus.type === 'success' ? 'text-success' : 'text-destructive'
+                }`}
             >
               {resetStatus.message}
             </p>
@@ -191,12 +190,12 @@ export const Login: React.FC = () => {
             type="button"
             onClick={handlePasswordReset}
             disabled={resettingPassword}
-            className="w-full flex justify-center py-2 px-4 border border-border text-sm font-medium rounded-md text-primary bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50"
+            className="w-full flex justify-center py-2 px-4 border border-border text-sm font-medium rounded-md text-primary bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 transition-colors duration-200"
           >
             {resettingPassword ? 'Sending Reset Email...' : 'Reset Password'}
           </button>
         </div>
-        
+
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-border"></div>
@@ -209,10 +208,10 @@ export const Login: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => handleDevLogin(UserRole.Coach)} className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-accent-foreground bg-accent hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent focus:ring-offset-background">
+          <button onClick={() => handleDevLogin(UserRole.Coach)} className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-accent-foreground bg-accent hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent focus:ring-offset-background hover-scale active-press transition-smooth shadow-sm hover:shadow-md">
             Continue as Coach
           </button>
-           <button onClick={() => handleDevLogin(UserRole.Player)} className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background">
+          <button onClick={() => handleDevLogin(UserRole.Player)} className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background hover-scale active-press transition-smooth shadow-sm hover:shadow-md">
             Continue as Player
           </button>
         </div>
