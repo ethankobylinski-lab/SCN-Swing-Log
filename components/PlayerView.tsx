@@ -3,7 +3,7 @@ import { DataContext, PitchingStatsSummary } from '../contexts/DataContext';
 import { Dashboard } from './Dashboard';
 import { ToastProvider } from './ToastProvider';
 import { LoadingSkeleton, SessionCardSkeleton, StatCardSkeleton, ListSkeleton, ChartSkeleton } from './LoadingSkeleton';
-import { EmptyState, NoSessionsEmpty, NoDrillsEmpty, NoGoalsEmpty, NoHistoryEmpty, NoAnalyticsEmpty } from './EmptyState';
+import { EmptyState, NoSessionsEmpty, NoDrillsEmpty, NoAssignedDrillsEmpty, NoGoalsEmpty, NoHistoryEmpty, NoAnalyticsEmpty } from './EmptyState';
 import { Button, SaveButton, CancelButton, SaveSessionButton, EndSessionButton, LogPitchButton, CreateButton } from './Button';
 import { PitchTracker } from './PitchTracker/PitchTracker';
 import { ProfileTab } from './ProfileTab';
@@ -612,14 +612,6 @@ const PlayerDashboard: React.FC<{
                 )}
             </div>
 
-            <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                <WorkloadCalendar
-                    hittingSessions={recentSessions}
-                    pitchingSessions={pitchSessions}
-                    days={14}
-                />
-            </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
                     <div>
@@ -647,7 +639,7 @@ const PlayerDashboard: React.FC<{
                                 ))}
                             </div>
                         ) : (
-                            <NoDrillsEmpty onCreateDrill={() => { }} />
+                            <NoAssignedDrillsEmpty />
                         )}
                     </div>
                     <div>
@@ -709,6 +701,15 @@ const PlayerDashboard: React.FC<{
                         )}
                     </div>
                 </div>
+            </div>
+
+            <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
+                <WorkloadCalendar
+                    hittingSessions={recentSessions}
+                    pitchingSessions={pitchSessions}
+                    players={[player]}
+                    days={14}
+                />
             </div>
 
             <Modal
@@ -1632,20 +1633,20 @@ const LogSession: React.FC<{
             </div>
             <div className="bg-card border border-border p-4 rounded-lg shadow-sm space-y-4">
                 <div>
-                    <h3 className="font-semibold text-muted-foreground mb-2">Drill Type</h3>
+                    <h3 className="font-semibold text-foreground mb-2">Drill Type</h3>
                     <div className="flex flex-wrap gap-2">
                         {DRILL_TYPES.map(d => <Button type="button" key={d} disabled={isAssigned} onClick={() => setDrillType(d)} variant={drillType === d ? 'primary' : 'ghost'}>{d}</Button>)}
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <h3 className="font-semibold text-muted-foreground mb-2">Target Zone (Optional)</h3>
+                        <h3 className="font-semibold text-foreground mb-2">Target Zone (Optional)</h3>
                         <div className="grid grid-cols-3 gap-2">
                             {TARGET_ZONES.map(z => <Button type="button" key={z} disabled={isAssigned} onClick={() => handleMultiSelect(setTargetZones, z)} variant={targetZones.includes(z) ? 'primary' : 'ghost'} size="sm">{z}</Button>)}
                         </div>
                     </div>
                     <div>
-                        <h3 className="font-semibold text-muted-foreground mb-2">Pitch Type (Optional)</h3>
+                        <h3 className="font-semibold text-foreground mb-2">Pitch Type (Optional)</h3>
                         <div className="grid grid-cols-3 gap-2">
                             {PITCH_TYPES.map(p => <Button type="button" key={p} disabled={isAssigned} onClick={() => handleMultiSelect(setPitchTypes, p)} variant={pitchTypes.includes(p) ? 'primary' : 'ghost'} size="sm">{p}</Button>)}
                         </div>
@@ -1654,22 +1655,22 @@ const LogSession: React.FC<{
             </div>
 
             <div className="bg-card border border-border p-4 rounded-lg shadow-sm space-y-4">
-                <h3 className="font-semibold text-muted-foreground mb-2">Game Situation</h3>
+                <h3 className="font-semibold text-foreground mb-2">Game Situation</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
                     <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Outs</label>
+                        <label className="text-sm font-semibold text-foreground">Outs</label>
                         <div className="flex gap-2 mt-2">
                             {OUTS_OPTIONS.map(o => <Button type="button" key={o} disabled={isAssigned} onClick={() => setOuts(o)} variant={outs === o ? 'primary' : 'ghost'} className="flex-1">{o}</Button>)}
                         </div>
                     </div>
                     <div>
-                        <label className="text-sm font-semibold text-muted-foreground">Count</label>
+                        <label className="text-sm font-semibold text-foreground">Count</label>
                         <select value={count} disabled={isAssigned} onChange={(e) => setCount(e.target.value as CountSituation)} className="mt-2 w-full bg-background border-input rounded-md py-2 px-3 text-sm disabled:opacity-70">
                             {COUNT_SITUATIONS.map(c => <option key={c}>{c}</option>)}
                         </select>
                     </div>
                     <div className="col-span-2">
-                        <label className="text-sm font-semibold text-muted-foreground">Base Runners</label>
+                        <label className="text-sm font-semibold text-foreground">Base Runners</label>
                         <div className="flex gap-2 mt-2">
                             {BASE_RUNNERS.map(r => <Button type="button" key={r} disabled={isAssigned} onClick={() => handleMultiSelect(setRunners, r)} variant={runners.includes(r) ? 'primary' : 'ghost'} className="flex-1">{r}</Button>)}
                         </div>
@@ -1679,7 +1680,7 @@ const LogSession: React.FC<{
 
             <div className="bg-card border border-border p-4 rounded-lg shadow-sm space-y-4">
                 <div>
-                    <h3 className="font-semibold text-muted-foreground">Log Set #{currentSet.setNumber}</h3>
+                    <h3 className="font-semibold text-foreground">Log Set #{currentSet.setNumber}</h3>
                     <p className="text-xs text-muted-foreground">Drill focus: {assignedDrill?.name || drillType}</p>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1727,14 +1728,14 @@ const LogSession: React.FC<{
                     </div>
                 </div>
                 <div className="space-y-2">
-                    <Button onClick={handleAddSet} variant="secondary" fullWidth>Log Set & Start Next</Button>
+                    <Button onClick={handleAddSet} variant="primary" fullWidth>Log Set & Start Next</Button>
                     <p className="text-xs text-muted-foreground text-center">We’ll stamp each set with the drill info that’s selected when you press the button.</p>
                 </div>
             </div>
 
             {loggedSets.length > 0 && (
                 <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                    <h3 className="font-semibold text-muted-foreground mb-2">Session Summary ({totalExec}/{totalReps})</h3>
+                    <h3 className="font-semibold text-foreground mb-2">Session Summary ({totalExec}/{totalReps})</h3>
                     <ul className="divide-y divide-border">
                         {loggedSets.map((s, i) => (
                             <li key={i} className="py-2 flex flex-wrap gap-3 justify-between items-center text-sm">

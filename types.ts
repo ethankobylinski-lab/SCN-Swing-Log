@@ -17,12 +17,26 @@ export interface User {
   coachTeamIds?: string[]; // Teams the user coaches (coaches only)
   isNew?: boolean; // Flag for new users needing onboarding
   preferences?: UserPreferences;
+  orientationCompleted?: boolean; // Whether user has completed the orientation tour
+  orientationProgress?: OrientationProgress; // Detailed orientation progress tracking
 }
 
 export interface UserPreferences {
   defaultTeamId?: string;
   showAdvancedAnalytics?: boolean;
   darkMode?: boolean;
+}
+
+export interface OrientationProgress {
+  welcomeTourCompleted?: boolean;
+  firstHittingSessionLogged?: boolean;
+  firstPitchingSessionLogged?: boolean;
+  firstGoalSet?: boolean;
+  dashboardTooltipSeen?: boolean;
+  historyTooltipSeen?: boolean;
+  analyticsTooltipSeen?: boolean;
+  goalsTooltipSeen?: boolean;
+  logSessionTooltipSeen?: boolean;
 }
 
 export interface Team {

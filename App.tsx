@@ -1,8 +1,9 @@
-import React, { useContext, Suspense, lazy } from 'react';
+import React, { useContext, Suspense, lazy, useState } from 'react';
 import { DataContext } from './contexts/DataContext';
 import { Login } from './components/Login';
 import { Spinner } from './components/Spinner';
 import { Onboarding } from './components/Onboarding';
+import { OrientationTour } from './components/OrientationTour';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { UserRole } from './types';
 
@@ -75,6 +76,20 @@ export const App: React.FC = () => {
 
   if (currentUser.isNew) {
     return <Onboarding />;
+  }
+
+  // Show orientation tour for players who haven't completed it
+  if (currentUser.role === UserRole.Player && !currentUser.orientationCompleted) {
+    return (
+      <OrientationTour
+        onComplete={() => {
+          // The tour itself handles marking as complete
+        }}
+        onSkip={() => {
+          // The tour itself handles this
+        }}
+      />
+    );
   }
 
   const renderView = () => {

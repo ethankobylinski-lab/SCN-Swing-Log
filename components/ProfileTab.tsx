@@ -327,8 +327,48 @@ export const ProfileTab: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="bg-card border border-border rounded-xl p-4 shadow-sm text-sm text-muted-foreground">
-            Need to update your details? Reach out to your coach so they can refresh your profile.
+          <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-foreground">Display name</p>
+                <p className="text-xs text-muted-foreground">Your name as it appears throughout the app.</p>
+              </div>
+            </div>
+            <input
+              id="player-display-name"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/60"
+              placeholder="Your name"
+            />
+            {nameStatus && (
+              <div
+                className={`rounded-lg border px-3 py-2 text-sm ${nameStatus.type === 'success'
+                  ? 'border-success/40 bg-success/10 text-success'
+                  : 'border-destructive/40 bg-destructive/10 text-destructive'
+                  }`}
+              >
+                {nameStatus.message}
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setNameInput(currentUser.name ?? '')}
+                disabled={savingName || !isNameDirty}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveName}
+                disabled={!isNameDirty || savingName}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition disabled:opacity-60"
+              >
+                {savingName ? 'Saving…' : 'Save name'}
+              </button>
+            </div>
           </div>
         )}
       </div>

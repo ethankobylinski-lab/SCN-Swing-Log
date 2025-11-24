@@ -241,9 +241,16 @@ export const WorkloadCalendar: React.FC<WorkloadCalendarProps> = ({
                                     style={style}
                                     title={`${day.fullDateLabel}: ${day.hittingReps} reps, ${day.pitchingPitches} pitches`}
                                 >
-                                    <span>{day.date.getDate()}</span>
-                                    {day.totalLoad > 0 && (
-                                        <span className="text-[9px] opacity-80">{day.totalLoad}</span>
+                                    <span className="text-base font-bold">{day.date.getDate()}</span>
+                                    {day.hittingReps > 0 && (
+                                        <span className="text-[9px] opacity-90">
+                                            {day.hittingReps} swings
+                                        </span>
+                                    )}
+                                    {day.pitchingPitches > 0 && (
+                                        <span className="text-[9px] opacity-90">
+                                            {day.pitchingPitches} pitches
+                                        </span>
                                     )}
                                 </button>
                             );

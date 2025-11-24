@@ -9,7 +9,8 @@ import {
     GoalType, DrillType, TargetZone, PitchType, SetResult,
     PitchSession, PitchRecord, PitchTypeModel, TeamSettings, PitchEligibility, PitchGoal, ZoneId, PitchOutcome,
     PitchSimulationTemplate, PitchSimulationStep, PitchSimulationAssignment,
-    PitchSimulationRun, PitchSimulationRunPitch, SimulationStepWithDetails, SimulationRunSummary
+    PitchSimulationRun, PitchSimulationRunPitch, SimulationStepWithDetails, SimulationRunSummary,
+    OrientationProgress
 } from '../types';
 import { generateTeamCode } from '../utils/helpers';
 import { MOCK_COACH, MOCK_PLAYERS, MOCK_TEAM, MOCK_DRILLS, MOCK_SESSIONS, MOCK_ASSIGNMENTS, MOCK_GOALS, MOCK_TEAM_GOALS } from '../utils/mockData';
@@ -64,6 +65,10 @@ interface IDataContext {
     updatePreferences: (prefs: Partial<UserPreferences>) => Promise<void>;
     updateProfile: (updates: { name?: string; phoneNumber?: string | null }) => Promise<void>;
     updateTeamDetails: (teamId: string, updates: { name?: string; primaryColor?: string | null }) => Promise<void>;
+    // --- Orientation ---
+    updateOrientationProgress: (progress: Partial<OrientationProgress>) => Promise<void>;
+    completeOrientationTour: () => Promise<void>;
+    resetOrientation: () => Promise<void>;
     joinTeamAsPlayer: (joinCode: string) => Promise<Team>;
     joinTeamAsCoach: (joinCode: string) => Promise<Team>;
     leaveTeam: (teamId: string) => Promise<void>;
@@ -225,6 +230,8 @@ type SupabaseUserRow = {
     preferences?: UserPreferences | null;
     profile?: PlayerProfile | null;
     is_new?: boolean | null;
+    orientation_completed?: boolean | null;
+    orientation_progress?: OrientationProgress | null;
 };
 
 // Maps a row from public.users into our User shape (auth profile + membership arrays).
@@ -244,6 +251,8 @@ const mapUserDocument = (row: SupabaseUserRow): User => {
         coachTeamIds: inferredCoachTeams.length > 0 ? inferredCoachTeams : undefined,
         isNew: Boolean(row.is_new),
         preferences: preferenceMap,
+        orientationCompleted: Boolean(row.orientation_completed),
+        orientationProgress: row.orientation_progress ?? undefined,
         ...(typeof row.email === 'string' ? { email: row.email } : {}),
         ...(typeof row.phone_number === 'string' ? { phoneNumber: row.phone_number } : {}),
     };
@@ -678,6 +687,53 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             throw new Error(error.message);
         }
         setCurrentUser((prev) => (prev ? { ...prev, isNew: false } : prev));
+    };
+
+    // Orientation management functions
+    const updateOrientationProgress = async (progress: Partial<OrientationProgress>) => {
+        if (!currentUser) {
+            throw new Error('User must be signed in to update orientation progress.');
+        }
+        const updatedProgress = { ...(currentUser.orientationProgress || {}), ...progress };
+        const { error } = await supabase
+            .from('users')
+            .update({ orientation_progress: updatedProgress })
+            .eq('id', currentUser.id);
+        if (error) {
+            console.error('Failed to update orientation progress:', error);
+            throw new Error(error.message);
+        }
+        setCurrentUser((prev) => (prev ? { ...prev, orientationProgress: updatedProgress } : prev));
+    };
+
+    const completeOrientationTour = async () => {
+        if (!currentUser) return;
+        const { error } = await supabase
+            .from('users')
+            .update({ orientation_completed: true })
+            .eq('id', currentUser.id);
+        if (error) {
+            console.error('Failed to mark orientation as completed:', error);
+            throw new Error(error.message);
+        }
+        setCurrentUser((prev) => (prev ? { ...prev, orientationCompleted: true } : prev));
+    };
+
+    const resetOrientation = async () => {
+        if (!currentUser) return;
+        const { error } = await supabase
+            .from('users')
+            .update({ orientation_completed: false, orientation_progress: null })
+            .eq('id', currentUser.id);
+        if (error) {
+            console.error('Failed to reset orientation:', error);
+            throw new Error(error.message);
+        }
+        setCurrentUser((prev) =>
+            prev
+                ? { ...prev, orientationCompleted: false, orientationProgress: undefined }
+                : prev
+        );
     };
 
     const logout = async () => {
@@ -3665,6 +3721,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getJoinCodesForTeam,
         updatePreferences,
         updateProfile,
+        // Orientation
+        updateOrientationProgress,
+        completeOrientationTour,
+        resetOrientation,
         joinTeamAsPlayer,
         joinTeamAsCoach,
         leaveTeam,

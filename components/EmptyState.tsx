@@ -120,6 +120,14 @@ export const NoDrillsEmpty: React.FC<{ onCreateDrill: () => void }> = ({ onCreat
     />
 );
 
+export const NoAssignedDrillsEmpty: React.FC = () => (
+    <EmptyState
+        icon="🏋️"
+        title="No Drills Assigned Yet"
+        message="Your coach hasn't assigned you any drills yet. Check back later or log an ad-hoc session in the meantime!"
+    />
+);
+
 export const NoPlayersEmpty: React.FC = () => (
     <EmptyState
         icon="👥"
