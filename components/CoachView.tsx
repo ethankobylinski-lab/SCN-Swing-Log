@@ -15,7 +15,7 @@ import { ReportsPage } from './ReportsPage';
 import {
     User, Team, Player, Drill, Session, DrillAssignment, PersonalGoal, TeamGoal,
     GoalType, DrillType, TargetZone, PitchType, SetResult, StatusMessage,
-    PitchSession, PitchRecord, DayOfWeek, CountSituation, BaseRunner, ZoneId
+    PitchSession, PitchRecord, DayOfWeek, CountSituation, BaseRunner, ZoneId, PitchTypeModel
 } from '../types';
 import { AnalyticsCharts } from './AnalyticsCharts';
 import { Modal } from './Modal';
@@ -38,6 +38,7 @@ import { EmptyState, NoPlayersEmpty, NoDrillsEmpty, NoGoalsEmpty } from './Empty
 import { Button, CreateButton, SaveButton, CancelButton } from './Button';
 import { usePitchingAnalytics, CoachPitchingAnalyticsData } from '../hooks/usePitchingAnalytics';
 import { WorkloadCalendar } from './WorkloadCalendar';
+import { DrillsGoalsAnalytics } from './DrillsGoalsAnalytics';
 
 
 // --- ANALYTICS SUB-COMPONENTS ---
@@ -2369,7 +2370,7 @@ const InvitePlayersModal: React.FC<{ isOpen: boolean; onClose: () => void; codes
 export const CoachView: React.FC = () => {
     const [currentView, setCurrentView] = useState('dashboard');
     const [showCoachTips, setShowCoachTips] = useState(true);
-    const { currentUser, getTeamsForCoach, getPlayersInTeam, getDrillsForTeam, getSessionsForTeam, createDrill, createAssignment, getGoalsForPlayer, createTeam, getJoinCodesForTeam, getTeamGoals, createTeamGoal, deleteTeamGoal, joinTeamAsCoach, activeTeam, setActiveTeamId, databaseStatus, databaseError, setCoachFeedbackOnSession, getPitchingSessionsForTeam, getPitchingStatsForSessions, createPersonalGoalForPlayerAsCoach, addSessionFeedback, deleteGoal, getAllPitchSessionsForPlayer } = useContext(DataContext)!;
+    const { currentUser, getTeamsForCoach, getPlayersInTeam, getDrillsForTeam, getSessionsForTeam, createDrill, createAssignment, getGoalsForPlayer, createTeam, getJoinCodesForTeam, getTeamGoals, createTeamGoal, deleteTeamGoal, joinTeamAsCoach, activeTeam, setActiveTeamId, databaseStatus, databaseError, setCoachFeedbackOnSession, getPitchingSessionsForTeam, getPitchingStatsForSessions, createPersonalGoalForPlayerAsCoach, addSessionFeedback, deleteGoal, getAllPitchSessionsForPlayer, getPitchTypesForPitcher } = useContext(DataContext)!;
     const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
     const [selectedGradYear, setSelectedGradYear] = useState<number | null>(null);
     const [isCreateTeamModalOpen, setIsCreateTeamModalOpen] = useState(false);
@@ -2873,9 +2874,24 @@ export const CoachView: React.FC = () => {
         };
 
         return { performanceOverTimeData, drillSuccessData, drillEffectiveness, teamBreakdowns };
+
+
     }, [sessions, drills, players, performanceOverTimeData, drillSuccessData]);
 
-    const teamPitchingAnalyticsData = usePitchingAnalytics(teamPitchingSessions, players);
+    const [teamPitchTypes, setTeamPitchTypes] = useState<PitchTypeModel[]>([]);
+
+    useEffect(() => {
+        const loadAllPitchTypes = async () => {
+            if (players.length === 0) return;
+            const promises = players.map(p => getPitchTypesForPitcher(p.id));
+            const results = await Promise.all(promises);
+            const allTypes = results.flat();
+            setTeamPitchTypes(allTypes);
+        };
+        loadAllPitchTypes();
+    }, [players, getPitchTypesForPitcher]);
+
+    const teamPitchingAnalyticsData = usePitchingAnalytics(teamPitchingSessions, players, teamPitchTypes);
 
     const headerContent = {
         dashboard: (
@@ -3039,6 +3055,14 @@ export const CoachView: React.FC = () => {
                                 {goalTemplateStatus.message}
                             </div>
                         )}
+
+                        <DrillsGoalsAnalytics
+                            players={players}
+                            teamGoals={teamGoals}
+                            sessions={sessions}
+                            drills={drills}
+                        />
+
                         <DrillTemplatesPanel
                             pendingTemplateId={pendingDrillTemplateId}
                             onApply={handleApplyDrillTemplate}

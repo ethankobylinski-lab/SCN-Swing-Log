@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { PitchSession, PitchRecord, Player, TargetZone, PitchType, CountSituation, ZoneId } from '../types';
+import { PitchSession, PitchRecord, Player, TargetZone, PitchType, CountSituation, ZoneId, PitchTypeModel } from '../types';
 import { formatDate } from '../utils/helpers';
 import { PITCH_TYPES } from '../constants';
 
@@ -31,17 +31,23 @@ export interface CoachPitchingAnalyticsData {
 
 export const usePitchingAnalytics = (
     pitchSessions: PitchSession[],
-    players: Player[]
+    players: Player[],
+    pitchTypes: PitchTypeModel[] = []
 ): CoachPitchingAnalyticsData | null => {
     return useMemo((): CoachPitchingAnalyticsData | null => {
-        if (pitchSessions.length === 0 || players.length === 0) {
+        // Filter out in-progress or discarded sessions
+        const completedSessions = pitchSessions.filter(s =>
+            s.status === 'completed' || s.status === 'emergency_review'
+        );
+
+        if (completedSessions.length === 0 || players.length === 0) {
             return null;
         }
 
         // 1. Performance Over Time (Strike % and First Pitch Strike %)
         const dailyStats = new Map<string, { total: number; strikes: number; }>();
 
-        pitchSessions.forEach(session => {
+        completedSessions.forEach(session => {
             const dateKey = new Date(session.date).toISOString().split('T')[0];
             if (!dailyStats.has(dateKey)) {
                 dailyStats.set(dateKey, { total: 0, strikes: 0 });
@@ -74,7 +80,7 @@ export const usePitchingAnalytics = (
             velocityCount: number;
         }>();
 
-        pitchSessions.forEach(session => {
+        completedSessions.forEach(session => {
             if (!playerTotals.has(session.pitcherId)) {
                 playerTotals.set(session.pitcherId, { pitches: 0, strikes: 0, velocitySum: 0, velocityCount: 0 });
             }
@@ -128,7 +134,7 @@ export const usePitchingAnalytics = (
             }
         };
 
-        pitchSessions.forEach(session => {
+        completedSessions.forEach(session => {
             if (session.pitchRecords) {
                 session.pitchRecords.forEach(pitch => {
                     const isStrike = pitch.outcome === 'called_strike' || pitch.outcome === 'swinging_strike' || pitch.outcome === 'foul' || pitch.outcome === 'in_play';
@@ -152,14 +158,18 @@ export const usePitchingAnalytics = (
 
                     // Pitch Type
                     if (pitch.pitchTypeId) {
-                        // Assuming pitchTypeId might be like 'PT1', 'PT2' etc or just the name
-                        // We try to map it to a name if it looks like an ID, otherwise use it as is
                         let pitchTypeName = pitch.pitchTypeId;
-                        if (pitch.pitchTypeId.startsWith('PT')) {
-                             const index = parseInt(pitch.pitchTypeId.replace('PT', '')) - 1;
-                             if (PITCH_TYPES[index]) {
-                                 pitchTypeName = PITCH_TYPES[index];
-                             }
+
+                        // Try to find in passed pitchTypes first (for UUIDs)
+                        const foundType = pitchTypes.find(pt => pt.id === pitch.pitchTypeId);
+                        if (foundType) {
+                            pitchTypeName = foundType.name; // Use the name (e.g. "Fastball")
+                        } else if (pitch.pitchTypeId.startsWith('PT')) {
+                            // Fallback for old PT1, PT2 format
+                            const index = parseInt(pitch.pitchTypeId.replace('PT', '')) - 1;
+                            if (PITCH_TYPES[index]) {
+                                pitchTypeName = PITCH_TYPES[index];
+                            }
                         }
                         updateMap(byPitchTypeMap, pitchTypeName);
                     }
@@ -213,5 +223,5 @@ export const usePitchingAnalytics = (
                 command: [] // Placeholder
             }
         };
-    }, [pitchSessions, players]);
+    }, [pitchSessions, players, pitchTypes]);
 };

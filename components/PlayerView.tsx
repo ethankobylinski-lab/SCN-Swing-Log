@@ -15,7 +15,7 @@ import { NoteIcon } from './icons/NoteIcon';
 import { ProfileIcon } from './icons/ProfileIcon';
 import { InfoIcon } from './icons/InfoIcon';
 import { PlusIcon } from './icons/PlusIcon';
-import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner, PersonalGoal, GoalType, TeamGoal, UserRole, PitchSession } from '../types';
+import { Drill, Session, SetResult, Player, DrillType, TargetZone, PitchType, CountSituation, BaseRunner, PersonalGoal, GoalType, TeamGoal, UserRole, PitchSession, PitchSimulationTemplate } from '../types';
 import { formatDate, calculateExecutionPercentage, getSessionGoalProgress, calculateHardHitPercentage, formatGoalName, calculateStrikeoutPercentage, getCurrentTeamMetricValue, formatTeamGoalName, describeRelativeDay, resolveDrillTypeForSet } from '../utils/helpers';
 import { AnalyticsCharts } from './AnalyticsCharts';
 import { TARGET_ZONES, PITCH_TYPES, COUNT_SITUATIONS, BASE_RUNNERS, OUTS_OPTIONS, DRILL_TYPES, GOAL_TYPES } from '../constants';
@@ -24,6 +24,7 @@ import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
 import { BreakdownBar } from './BreakdownBar';
 import { SessionSaveAnimation } from './SessionSaveAnimation';
 import { Tooltip } from './Tooltip';
+import { ProgramDetailsModal } from './ProgramDetailsModal';
 import { SessionDetail } from './SessionDetail';
 import { PlayerAnalyticsTab } from './PlayerAnalyticsTab';
 import { PitchRestCard } from './PitchRestCard';
@@ -33,7 +34,7 @@ import { PitchSessionDetailModal } from './PitchSessionDetailModal';
 import { RecordSessionModal } from './RecordSessionModal';
 import { generatePitchSessionTitle } from '../utils/sessionTitleGenerator';
 import { supabase } from '../supabaseClient';
-import { usePitchingAnalytics } from '../hooks/usePitchingAnalytics';
+
 import { WorkloadCalendar } from './WorkloadCalendar';
 
 const doesSetMatchGoal = (goal: PersonalGoal, session: Session, set: SetResult, drills: Drill[]) => {
@@ -439,8 +440,15 @@ const GoalDetail: React.FC<GoalDetailProps> = ({
     );
 };
 
-const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: Drill[]; }> = ({ goal, sessions, drills }) => {
+const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: Drill[]; playerId?: string; }> = ({ goal, sessions, drills, playerId }) => {
     const currentValue = getCurrentTeamMetricValue(goal, sessions, drills);
+
+    // Calculate player's individual contribution if playerId is provided
+    let playerValue = 0;
+    if (playerId) {
+        const playerSessions = sessions.filter(s => s.playerId === playerId);
+        playerValue = getCurrentTeamMetricValue(goal, playerSessions, drills);
+    }
 
     let progress = 0;
     if (goal.targetValue > 0) {
@@ -453,9 +461,20 @@ const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: 
         progress = currentValue === 0 ? 100 : 0;
     }
 
+    // Calculate player progress percentage (for display bar)
+    let playerProgress = 0;
+    if (playerId && goal.targetValue > 0) {
+        if (goal.metric === 'No Strikeouts') {
+            playerProgress = Math.max(0, 100 - (playerValue / goal.targetValue * 100));
+        } else {
+            playerProgress = (playerValue / goal.targetValue) * 100;
+        }
+    }
+
     const isPercentage = goal.metric.includes('%');
     const displayValue = isPercentage ? `${Math.round(currentValue)}%` : Math.round(currentValue);
     const displayTarget = isPercentage ? `${goal.targetValue}%` : goal.targetValue;
+    const playerDisplayValue = isPercentage ? `${Math.round(playerValue)}%` : Math.round(playerValue);
 
     return (
         <div className="bg-card border border-border/60 p-4 rounded-xl space-y-3 shadow-sm">
@@ -463,12 +482,30 @@ const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: 
                 <h4 className="font-semibold text-card-foreground">{goal.description}</h4>
                 <p className="text-xs text-muted-foreground">{formatTeamGoalName(goal)} | Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
             </div>
-            <div className="flex items-center gap-3 mt-2">
-                <div className="w-full bg-background rounded-full h-2.5">
-                    <div className="bg-secondary h-2.5 rounded-full" style={{ width: `${Math.min(progress, 100)}%` }}></div>
+
+            {/* Team Progress */}
+            <div>
+                <p className="text-xs text-muted-foreground mb-1">Team Progress</p>
+                <div className="flex items-center gap-3">
+                    <div className="w-full bg-background rounded-full h-2.5">
+                        <div className="bg-secondary h-2.5 rounded-full" style={{ width: `${Math.min(progress, 100)}%` }}></div>
+                    </div>
+                    <span className="text-sm font-bold text-primary">{displayValue}</span>
                 </div>
-                <span className="text-sm font-bold text-primary">{displayValue}</span>
             </div>
+
+            {/* Player Contribution (if playerId provided) */}
+            {playerId && (
+                <div>
+                    <p className="text-xs text-muted-foreground mb-1">My Contribution</p>
+                    <div className="flex items-center gap-3">
+                        <div className="w-full bg-background rounded-full h-2">
+                            <div className="bg-primary/60 h-2 rounded-full" style={{ width: `${Math.min(playerProgress, 100)}%` }}></div>
+                        </div>
+                        <span className="text-xs font-semibold text-primary">{playerDisplayValue}</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -483,9 +520,11 @@ const PlayerDashboard: React.FC<{
     teamGoals: TeamGoal[];
     teamSessions: Session[];
     onStartAssignedSession: (drill: Drill) => void;
+    assignedSimulations: (PitchSimulationTemplate & { dueDate?: string; completionCount?: number; isRecurring?: boolean })[];
+    onStartSimulation: (template: PitchSimulationTemplate & { dueDate?: string; completionCount?: number; isRecurring?: boolean }) => void;
     activeTeamId?: string;
     loading?: boolean;
-}> = ({ player, assignedDrills, recentSessions, pitchSessions, drills, goals, teamGoals, teamSessions, onStartAssignedSession, activeTeamId, loading = false }) => {
+}> = ({ player, assignedDrills, recentSessions, pitchSessions, drills, goals, teamGoals, teamSessions, onStartAssignedSession, assignedSimulations, onStartSimulation, activeTeamId, loading = false }) => {
 
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
     const { createGoal, deleteGoal, updateGoal, databaseError } = useContext(DataContext)!;
@@ -642,6 +681,48 @@ const PlayerDashboard: React.FC<{
                             <NoAssignedDrillsEmpty />
                         )}
                     </div>
+
+                    <div>
+                        <h2 className="text-xl font-bold text-foreground mb-4">Assigned Pitching Programs</h2>
+                        {loading ? (
+                            <ListSkeleton count={1} />
+                        ) : assignedSimulations && assignedSimulations.length > 0 ? (
+                            <div className="space-y-4">
+                                {assignedSimulations.map(program => (
+                                    <div key={program.id} className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col justify-between">
+                                        <div>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <h3 className="font-bold text-primary">{program.name}</h3>
+                                                <div className="flex gap-2">
+                                                    {program.completionCount !== undefined && program.completionCount > 0 && (
+                                                        <span className="px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-full font-semibold border border-green-500/20">
+                                                            ✓ Completed{program.completionCount > 1 ? ` (${program.completionCount})` : ''}
+                                                        </span>
+                                                    )}
+                                                    <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full font-semibold">
+                                                        Program
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-muted-foreground mt-1 mb-3">{program.description || 'No description provided.'}</p>
+                                        </div>
+                                        <Button
+                                            onClick={() => onStartSimulation(program)}
+                                            variant="secondary"
+                                            fullWidth
+                                            className="mt-4"
+                                        >
+                                            View Details
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="bg-card border border-border p-6 rounded-lg text-center">
+                                <p className="text-muted-foreground">No pitching programs assigned.</p>
+                            </div>
+                        )}
+                    </div>
                     <div>
                         <h2 className="text-xl font-bold text-foreground mb-4">Active Team Goals</h2>
                         <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
@@ -649,7 +730,7 @@ const PlayerDashboard: React.FC<{
                                 <ListSkeleton count={1} />
                             ) : teamGoals.length > 0 ? (
                                 <div className="space-y-4">
-                                    {teamGoals.map(g => <TeamGoalProgress key={g.id} goal={g} sessions={teamSessions} drills={drills} />)}
+                                    {teamGoals.map(g => <TeamGoalProgress key={g.id} goal={g} sessions={teamSessions} drills={drills} playerId={player.id} />)}
                                 </div>
                             ) : (
                                 <EmptyState
@@ -2446,6 +2527,8 @@ export const PlayerView: React.FC = () => {
         createPitchSession,
         finalizePitchSession,
         getAllPitchSessionsForPlayer,
+        getAssignedSimulations,
+        startSimulationRun,
     } = useContext(DataContext)!;
 
     const [drillToLog, setDrillToLog] = useState<Drill | null>(null);
@@ -2460,6 +2543,9 @@ export const PlayerView: React.FC = () => {
     const [pitchingFormResetKey, setPitchingFormResetKey] = useState(0);
     const [activePitchSessionId, setActivePitchSessionId] = useState<string | null>(null);
     const [pitchSessions, setPitchSessions] = useState<PitchSession[]>([]);
+    const [assignedSimulations, setAssignedSimulations] = useState<PitchSimulationTemplate[]>([]);
+    const [activeSimulationRunId, setActiveSimulationRunId] = useState<string | null>(null);
+    const [selectedProgram, setSelectedProgram] = useState<PitchSimulationTemplate | null>(null);
 
     const player = currentUser as Player;
     const [selectedTeamId, setSelectedTeamId] = useState<string | undefined>(player.teamIds[0]);
@@ -2497,6 +2583,63 @@ export const PlayerView: React.FC = () => {
 
         fetchPitchSessions();
     }, [player.id, getAllPitchSessionsForPlayer]);
+
+    useEffect(() => {
+        const fetchAssignedSimulations = async () => {
+            if (!selectedTeamId) return;
+            try {
+                console.log('Fetching assigned simulations...');
+                const sims = await getAssignedSimulations(player.id, selectedTeamId);
+                console.log('Fetched simulations:', sims);
+                setAssignedSimulations(sims);
+            } catch (error) {
+                console.error('Error fetching assigned simulations:', error);
+                setAssignedSimulations([]);
+            }
+        };
+        fetchAssignedSimulations();
+    }, [player.id, selectedTeamId, getAssignedSimulations]);
+
+    const handleStartSimulation = async (template: PitchSimulationTemplate & { dueDate?: string }) => {
+        console.log('=== handleStartSimulation called ===');
+        console.log('Template:', template);
+        console.log('selectedTeamId:', selectedTeamId);
+
+        if (!selectedTeamId) {
+            console.error('No team selected');
+            return;
+        }
+        try {
+            console.log('Creating pitch session...');
+            // 1. Create a new pitch session for this run
+            const sessionId = await createPitchSession(
+                player.id,
+                selectedTeamId,
+                `Program: ${template.name}`,
+                'command', // Use 'command' or specific type for programs
+                false,
+                []
+            );
+            console.log('Session created:', sessionId);
+
+            console.log('Starting simulation run...');
+            // 2. Start the simulation run
+            const runId = await startSimulationRun(template.id, player.id, selectedTeamId);
+            console.log('Simulation run started:', runId);
+
+            // 3. Set state to navigate to tracker
+            console.log('Setting state to navigate...');
+            setActivePitchSessionId(sessionId);
+            setActiveSimulationRunId(runId);
+            setLogMode('pitching');
+            setCurrentView('log_session');
+            setSelectedProgram(null); // Close modal if open
+            console.log('Navigation state set');
+        } catch (error) {
+            console.error('Error starting simulation:', error);
+            setLogSessionError('Failed to start program. Please try again.');
+        }
+    };
 
     useEffect(() => {
         if (!recordSessionIntent) {
@@ -2569,11 +2712,25 @@ export const PlayerView: React.FC = () => {
     const handleCancelLogSession = () => {
         setLogSessionError(null);
         setIsSavingSession(false);
+        setDrillToLog(null);
+        setSessionToEdit(null);
+        setLogMode(null);
         // Clean up active pitch session if exists
         if (activePitchSessionId) {
             setActivePitchSessionId(null);
+            setActiveSimulationRunId(null);
         }
         setCurrentView('dashboard');
+
+        // Refresh simulations to update completion badges
+        if (selectedTeamId) {
+            getAssignedSimulations(player.id, selectedTeamId).then(sims => {
+                console.log('Refreshed simulations after session:', sims);
+                setAssignedSimulations(sims);
+            }).catch(err => {
+                console.error('Error refreshing simulations:', err);
+            });
+        }
     }
 
     const handleLogHittingSession = async (sessionData: { name: string; drillId?: string; sets: SetResult[]; reflection?: string }) => {
@@ -2846,6 +3003,8 @@ export const PlayerView: React.FC = () => {
                             activeTeamId={selectedTeamId}
                             loading={loading}
                             pitchSessions={pitchSessions}
+                            assignedSimulations={assignedSimulations}
+                            onStartSimulation={(program) => setSelectedProgram(program)}
                         />
                         {/* REMOVED: PitchingOverviewCard - Use new Bullpen/PitchTracker UI for pitching sessions */}
                     </div>
@@ -2887,6 +3046,7 @@ export const PlayerView: React.FC = () => {
                                 setActivePitchSessionId={setActivePitchSessionId}
                                 onCancel={handleCancelLogSession}
                                 createPitchSession={createPitchSession}
+                                activeSimulationRunId={activeSimulationRunId}
                             />
                         ) : (
                             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
@@ -3054,6 +3214,14 @@ export const PlayerView: React.FC = () => {
                         />
                     </div>
                 </div>
+            )}
+            {selectedProgram && (
+                <ProgramDetailsModal
+                    program={selectedProgram}
+                    isOpen={!!selectedProgram}
+                    onClose={() => setSelectedProgram(null)}
+                    onStart={() => handleStartSimulation(selectedProgram)}
+                />
             )}
         </>
     );

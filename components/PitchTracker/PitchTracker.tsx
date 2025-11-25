@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { DataContext } from '../../contexts/DataContext';
-import { PitchRecord, PitchTypeModel, ZoneId, PitchOutcome, PitchSessionAnalytics, PitchType } from '../../types';
+import { PitchRecord, PitchTypeModel, ZoneId, PitchOutcome, PitchSessionAnalytics, PitchType, PitchSimulationRun, PitchSimulationStep, SimulationStepWithDetails } from '../../types';
 import { StrikeZoneClean, PitchLocation } from '../StrikeZoneClean';
 import { BatterCountRow } from './BatterCountRow';
 import { GameSituationPanel } from './GameSituationPanel';
@@ -11,7 +11,9 @@ import { isInStrikeZone, zoneIdToRowCol, distanceFromTargetInches } from '../../
 interface PitchTrackerProps {
     sessionId: string;
     onNavigateBack?: () => void;
+    simulationRunId?: string;
 }
+
 
 /**
  * PitchTracker - Mobile-first single-column pitching session recorder
@@ -24,7 +26,7 @@ interface PitchTrackerProps {
  * 5. Notes
  * 6. End Session button
  */
-export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigateBack }) => {
+export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigateBack, simulationRunId }) => {
     const context = useContext(DataContext);
 
     if (!context) throw new Error('PitchTracker must be used within DataProvider');
@@ -35,7 +37,12 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
         recordPitch,
         finalizePitchSession,
         getPitchTypesForPitcher,
-        addCustomPitchType
+        addCustomPitchType,
+        getActiveSimulationRun,
+        getSimulationSteps,
+        recordSimulationPitch,
+        advanceSimulationStep,
+        completeSimulationRun
     } = context;
 
     // Session state
@@ -70,11 +77,19 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
     // UI state
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [mode, setMode] = useState<'selectIntent' | 'selectActual'>('selectIntent');
 
     // Edit pitch modal
     const [editingPitch, setEditingPitch] = useState<PitchRecord | null>(null);
     const [editOutcome, setEditOutcome] = useState<PitchOutcome>('called_strike');
+
+    // Simulation state
+    const [simulationRun, setSimulationRun] = useState<PitchSimulationRun | null>(null);
+    const [simulationSteps, setSimulationSteps] = useState<SimulationStepWithDetails[]>([]);
+    const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
+    const [simulationLoading, setSimulationLoading] = useState(false);
+    const [simulationComplete, setSimulationComplete] = useState(false);
 
     // Load session data
     useEffect(() => {
@@ -107,7 +122,53 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
         };
 
         loadData();
+        loadData();
     }, [sessionId]);
+
+    // Load simulation data
+    useEffect(() => {
+        const loadSimulation = async () => {
+            if (!simulationRunId || !session) return;
+
+            setSimulationLoading(true);
+            try {
+                // 1. Get run details
+                const run = await getActiveSimulationRun(session.pitcherId);
+                if (run && run.id === simulationRunId) {
+                    setSimulationRun(run);
+                    setCurrentStepIndex(run.currentStepIndex);
+
+                    // 2. Get steps
+                    const steps = await getSimulationSteps(run.templateId);
+                    setSimulationSteps(steps);
+                }
+            } catch (error) {
+                console.error('Error loading simulation:', error);
+            } finally {
+                setSimulationLoading(false);
+            }
+        };
+
+        loadSimulation();
+    }, [simulationRunId, session, getActiveSimulationRun, getSimulationSteps]);
+
+    // Sync current step with UI
+    useEffect(() => {
+        if (!simulationRun || simulationSteps.length === 0) return;
+
+        const currentStep = simulationSteps[currentStepIndex];
+        if (currentStep) {
+            // Pre-fill target and pitch type
+            setTargetZone(currentStep.intendedZone);
+            setSelectedPitchTypeId(currentStep.pitchTypeId);
+
+            // Force mode to selectActual (skip intent selection)
+            setMode('selectActual');
+        } else if (currentStepIndex >= simulationSteps.length && simulationSteps.length > 0) {
+            setSimulationComplete(true);
+            handleEndSession();
+        }
+    }, [simulationRun, simulationSteps, currentStepIndex]);
 
     const handleSelectIntent = (zone: ZoneId, x: number, y: number) => {
         // Set intended target
@@ -161,7 +222,27 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
                 missDistanceInches
             };
 
-            await recordPitch(sessionId, newPitch);
+            const result = await recordPitch(sessionId, newPitch);
+
+            // Handle simulation recording
+            if (simulationRunId && simulationRun && simulationSteps[currentStepIndex]) {
+                const currentStep = simulationSteps[currentStepIndex];
+                const hitIntendedZone = actualZone === currentStep.intendedZone;
+                const isStrike = outcome === 'called_strike' || outcome === 'swinging_strike' || outcome === 'foul';
+
+                // Record simulation pitch
+                await recordSimulationPitch(
+                    simulationRunId,
+                    currentStep.id,
+                    result.id,
+                    isStrike,
+                    hitIntendedZone
+                );
+
+                // Advance step
+                await advanceSimulationStep(simulationRunId);
+                setCurrentStepIndex(prev => prev + 1);
+            }
 
             // Refresh history
             const updatedHistory = await getPitchHistory(sessionId);
@@ -181,6 +262,7 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
             alert('Failed to save pitch. Please try again.');
         } finally {
             setSaving(false);
+            setLastSaved(new Date());
         }
     };
 
@@ -220,6 +302,12 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
 
     const handleEndSession = async () => {
         try {
+            // If this is a simulation run, complete it first
+            if (simulationRunId && simulationRun) {
+                console.log('Completing simulation run:', simulationRunId);
+                await completeSimulationRun(simulationRunId);
+            }
+
             // Finalize the session to calculate analytics
             await finalizePitchSession(sessionId);
 
@@ -279,12 +367,40 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
         <div className="max-w-2xl mx-auto p-4 bg-background min-h-screen font-sans">
             {/* Header */}
             <div className="mb-6 pb-4 border-b border-border animate-fadeIn">
+                {simulationRun && (
+                    <div className="mb-3 bg-primary/10 border border-primary/20 rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-xs font-bold text-primary uppercase tracking-wider">Program Mode</span>
+                            <span className="text-xs text-muted-foreground">Step {currentStepIndex + 1} of {simulationSteps.length}</span>
+                        </div>
+                        {simulationSteps[currentStepIndex] ? (
+                            <div className="text-lg font-bold text-foreground">
+                                Throw <span style={{ color: simulationSteps[currentStepIndex].pitchTypeColor }}>{simulationSteps[currentStepIndex].pitchTypeCode}</span> to <span className="text-primary">{simulationSteps[currentStepIndex].intendedZone}</span>
+                            </div>
+                        ) : (
+                            <div className="text-lg font-bold text-green-600">Program Complete!</div>
+                        )}
+                    </div>
+                )}
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="m-0 text-2xl font-bold text-foreground">{session.sessionName}</h1>
-                        <p className="mt-1 text-muted-foreground text-sm">
-                            Pitch #{pitchHistory.length + 1}
-                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <p className="m-0 text-muted-foreground text-sm">
+                                Pitch #{pitchHistory.length + 1}
+                            </p>
+                            {saving ? (
+                                <span className="text-xs text-muted-foreground animate-pulse flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></span>
+                                    Saving...
+                                </span>
+                            ) : lastSaved ? (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1 opacity-70">
+                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                    Saved
+                                </span>
+                            ) : null}
+                        </div>
                     </div>
                     <div className="text-right">
                         <div className="text-2xl font-bold text-primary">
@@ -354,6 +470,7 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
                         outs={outs}
                         onRunnersChange={setRunnersOn}
                         onOutsChange={setOuts}
+                        enabled={true}
                     />
                 )}
             </div>
@@ -383,9 +500,10 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
                         className={`flex-1 py-2 px-4 rounded-lg font-semibold text-sm border-2 transition-all ${mode === 'selectIntent'
                             ? 'bg-yellow-500 text-white border-yellow-500'
                             : 'bg-background text-foreground border-border hover:border-yellow-500'
-                            }`}
+                            } ${simulationRun ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={!!simulationRun}
                     >
-                        🎯 Set Intended Target
+                        {simulationRun ? 'Auto-Target Set' : '🎯 Set Intended Target'}
                     </button>
                     <button
                         onClick={() => setMode('selectActual')}

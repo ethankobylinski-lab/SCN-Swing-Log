@@ -111,7 +111,7 @@ interface IDataContext {
         pitchGoals: PitchGoal[],
         catcherId?: string
     ) => Promise<string>; // returns sessionId
-    recordPitch: (sessionId: string, pitch: Omit<PitchRecord, 'id' | 'sessionId' | 'createdAt'>) => Promise<void>;
+    recordPitch: (sessionId: string, pitch: Omit<PitchRecord, 'id' | 'sessionId' | 'createdAt'>) => Promise<{ success: boolean; id: string }>;
     updatePitch: (sessionId: string, pitchId: string, updates: Partial<PitchRecord>) => Promise<void>;
     finalizePitchSession: (sessionId: string) => Promise<void>;
     getPitchEligibility: (pitcherId: string, teamId: string) => Promise<PitchEligibility | null>;
@@ -119,6 +119,7 @@ interface IDataContext {
     updateTeamSettings: (teamId: string, settings: Partial<TeamSettings>) => Promise<void>;
     getPitchSession: (sessionId: string) => Promise<PitchSession | null>;
     getAllPitchSessionsForPlayer: (pitcherId: string, teamId?: string) => Promise<PitchSession[]>;
+    discardPitchSession: (sessionId: string) => Promise<void>;
     getPitchHistory: (sessionId: string) => Promise<PitchRecord[]>;
     // --- Pitch Simulations ---
     // Coach functions
@@ -141,7 +142,7 @@ interface IDataContext {
     ) => Promise<void>;
     deactivateSimulationTemplate: (templateId: string) => Promise<void>;
     // Pitcher functions
-    getAssignedSimulations: (pitcherId: string, teamId: string) => Promise<PitchSimulationTemplate[]>;
+    getAssignedSimulations: (pitcherId: string, teamId: string) => Promise<(PitchSimulationTemplate & { dueDate?: string; completionCount?: number; isRecurring?: boolean })[]>;
     startSimulationRun: (templateId: string, pitcherId: string, teamId: string) => Promise<string>; // returns runId
     getActiveSimulationRun: (pitcherId: string) => Promise<PitchSimulationRun | null>;
     recordSimulationPitch: (
@@ -1692,6 +1693,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 pitch_records (*)
             `)
             .eq('team_id', teamId)
+            .in('status', ['completed', 'emergency_review'])
             .order('created_at', { ascending: false });
 
         if (error) {
@@ -1713,6 +1715,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             createdAt: row.created_at,
             updatedAt: row.updated_at,
             sessionStartTime: row.session_start_time,
+            status: row.status || 'completed',
             pitchRecords: (row.pitch_records || []).map((pr: any) => ({
                 id: pr.id,
                 sessionId: pr.session_id,
@@ -2791,7 +2794,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return data.id;
     };
 
-    const recordPitch = async (sessionId: string, pitch: Omit<PitchRecord, 'id' | 'sessionId' | 'createdAt'>) => {
+    const recordPitch = async (sessionId: string, pitch: Omit<PitchRecord, 'id' | 'sessionId' | 'createdAt'>): Promise<{ success: boolean; id: string }> => {
         if (isDemoMode) {
             return { success: true, id: `mock-pitch-${Date.now()}` };
         }
@@ -2828,7 +2831,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
 
             // Success - pitch recorded atomically
-            return data;
+            return { success: true, id: data.pitch_id || data.id };
         } catch (error) {
             console.error('recordPitch error:', error);
             throw error;
@@ -3041,6 +3044,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 totalPitches: 0,
                 sessionStartTime: new Date().toISOString(),
                 restHoursRequired: 24,
+                status: 'completed'
             };
             return mockSession;
         }
@@ -3070,7 +3074,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             sessionEndTime: data.session_end_time,
             restHoursRequired: data.rest_hours_required,
             restEndTime: data.rest_end_time,
-            analytics: data.analytics || undefined
+            analytics: data.analytics || undefined,
+            status: data.status || 'completed' // Backfill fallback
         };
     };
 
@@ -3117,6 +3122,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 restHoursRequired: d.rest_hours_required,
                 restEndTime: d.rest_end_time,
                 analytics: d.analytics || undefined,
+                status: d.status || 'completed', // Backfill fallback
                 pitchRecords: (d.pitch_records || []).map((pr: any) => ({
                     id: pr.id,
                     sessionId: pr.session_id,
@@ -3139,6 +3145,21 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                     createdAt: pr.created_at
                 }))
             }));
+    };
+
+    const discardPitchSession = async (sessionId: string) => {
+        if (isDemoMode) return;
+
+        // Soft delete or mark as discarded
+        const { error } = await supabase
+            .from('pitch_sessions')
+            .update({ status: 'discarded' })
+            .eq('id', sessionId);
+
+        if (error) {
+            console.error('Error discarding session:', error);
+            throw new Error('Failed to discard session');
+        }
     };
 
     const getPitchHistory = async (sessionId: string): Promise<PitchRecord[]> => {
@@ -3438,45 +3459,97 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     /**
      * Pitcher: Get assigned simulations for a pitcher
      */
-    const getAssignedSimulations = async (pitcherId: string, teamId: string): Promise<PitchSimulationTemplate[]> => {
+    const getAssignedSimulations = async (pitcherId: string, teamId: string): Promise<(PitchSimulationTemplate & { dueDate?: string; completionCount?: number; isRecurring?: boolean })[]> => {
         if (!currentUser) throw new Error('Must be signed in');
 
-        // Get assignments for this pitcher
-        const { data: assignments, error: assignError } = await supabase
+        console.log('=== getAssignedSimulations called ===');
+        console.log('pitcherId:', pitcherId);
+        console.log('teamId:', teamId);
+
+        // Get assignments with template data
+        const { data, error } = await supabase
             .from('pitch_simulation_assignments')
-            .select('template_id')
+            .select(`
+                due_date,
+                is_recurring,
+                pitch_simulation_templates (
+                    id,
+                    team_id,
+                    created_by,
+                    name,
+                    description,
+                    is_active,
+                    created_at,
+                    updated_at
+                )
+            `)
             .eq('team_id', teamId)
             .or(`pitcher_id.eq.${pitcherId},pitcher_id.is.null`)
             .eq('is_active', true);
 
-        if (assignError || !assignments || assignments.length === 0) {
+        console.log('Assignments data:', data);
+        console.log('Assignments error:', error);
+
+        if (error || !data || data.length === 0) {
             return [];
         }
 
-        const templateIds = assignments.map(a => a.template_id);
+        // For each template, get completion count
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayISO = today.toISOString();
+        console.log('Today ISO:', todayISO);
 
-        // Get template details
-        const { data, error } = await supabase
-            .from('pitch_simulation_templates')
-            .select('*')
-            .in('id', templateIds)
-            .eq('is_active', true);
+        const results = await Promise.all(
+            data
+                .filter(row => {
+                    const template = row.pitch_simulation_templates;
+                    return template && !Array.isArray(template) && (template as any).is_active;
+                })
+                .map(async (row) => {
+                    const template = row.pitch_simulation_templates as any;
+                    const isRecurring = row.is_recurring;
 
-        if (error) {
-            console.error('Error fetching assigned simulations:', error);
-            return [];
-        }
+                    console.log('Processing template:', template.name, 'isRecurring:', isRecurring);
 
-        return data.map(row => ({
-            id: row.id,
-            teamId: row.team_id,
-            createdBy: row.created_by,
-            name: row.name,
-            description: row.description || undefined,
-            isActive: row.is_active,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at
-        }));
+                    // Get completed runs
+                    let completionQuery = supabase
+                        .from('pitch_simulation_runs')
+                        .select('id, completed_at')
+                        .eq('template_id', template.id)
+                        .eq('pitcher_id', pitcherId)
+                        .not('completed_at', 'is', null);
+
+                    // For recurring programs, only count today's completions
+                    if (isRecurring) {
+                        completionQuery = completionQuery.gte('completed_at', todayISO);
+                    }
+
+                    const { data: runs, error: runsError } = await completionQuery;
+                    console.log(`Runs for template ${template.name}:`, runs);
+                    console.log(`Runs error:`, runsError);
+
+                    const completionCount = runs?.length || 0;
+                    console.log(`Completion count for ${template.name}:`, completionCount);
+
+                    return {
+                        id: template.id,
+                        teamId: template.team_id,
+                        createdBy: template.created_by,
+                        name: template.name,
+                        description: template.description || undefined,
+                        isActive: template.is_active,
+                        createdAt: template.created_at,
+                        updatedAt: template.updated_at,
+                        dueDate: row.due_date || undefined,
+                        completionCount,
+                        isRecurring
+                    };
+                })
+        );
+
+        console.log('Final results:', results);
+        return results;
     };
 
     /**
@@ -3761,6 +3834,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateTeamSettings,
         getPitchSession,
         getAllPitchSessionsForPlayer,
+        discardPitchSession,
         getPitchHistory,
         // Pitch Simulations
         createSimulationTemplate,

@@ -1,6 +1,7 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { DataContext } from '../contexts/DataContext';
 import { PitchSimulationTemplate, SimulationStepWithDetails, PitchTypeModel } from '../types';
+import { ProgramEligibilityTable } from './ProgramEligibilityTable';
 
 interface PitchingProgramsListProps {
     onCreateNew: () => void;
@@ -22,6 +23,7 @@ export const PitchingProgramsList: React.FC<PitchingProgramsListProps> = ({
     const [templateStepCounts, setTemplateStepCounts] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
     const [deactivating, setDeactivating] = useState<string | null>(null);
+    const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
 
     // Load templates on mount
     React.useEffect(() => {
@@ -137,6 +139,12 @@ export const PitchingProgramsList: React.FC<PitchingProgramsListProps> = ({
 
                                 <div className="flex gap-2 mt-auto">
                                     <button
+                                        onClick={() => setExpandedProgramId(expandedProgramId === template.id ? null : template.id)}
+                                        className="flex-1 bg-primary/15 hover:bg-primary/25 text-primary font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
+                                    >
+                                        {expandedProgramId === template.id ? 'Hide Details' : 'View Program'}
+                                    </button>
+                                    <button
                                         onClick={() => onEdit(template.id, template.name)}
                                         className="flex-1 bg-muted hover:bg-muted/80 text-foreground font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
                                     >
@@ -156,6 +164,14 @@ export const PitchingProgramsList: React.FC<PitchingProgramsListProps> = ({
                                         {isDeactivating ? '...' : 'Delete'}
                                     </button>
                                 </div>
+
+                                {/* Expandable Eligibility Table */}
+                                {expandedProgramId === template.id && (
+                                    <ProgramEligibilityTable
+                                        templateId={template.id}
+                                        templateName={template.name}
+                                    />
+                                )}
                             </div>
                         );
                     })}

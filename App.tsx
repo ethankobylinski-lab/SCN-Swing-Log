@@ -51,6 +51,7 @@ const BackgroundDecor: React.FC = () => (
 
 export const App: React.FC = () => {
   const context = useContext(DataContext);
+  const [orientationDismissed, setOrientationDismissed] = useState(false);
 
   if (!context) {
     return (
@@ -79,14 +80,14 @@ export const App: React.FC = () => {
   }
 
   // Show orientation tour for players who haven't completed it
-  if (currentUser.role === UserRole.Player && !currentUser.orientationCompleted) {
+  if (currentUser.role === UserRole.Player && !currentUser.orientationCompleted && !orientationDismissed) {
     return (
       <OrientationTour
         onComplete={() => {
-          // The tour itself handles marking as complete
+          setOrientationDismissed(true);
         }}
         onSkip={() => {
-          // The tour itself handles this
+          setOrientationDismissed(true);
         }}
       />
     );

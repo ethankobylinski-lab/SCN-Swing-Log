@@ -239,6 +239,7 @@ export interface PitchSession {
   date: string; // ISO date string
   sessionName: string;
   sessionType: PitchSessionType;
+  status: 'in_progress' | 'completed' | 'emergency_review' | 'discarded';
   gameSituationEnabled: boolean;
   createdAt: string;
   updatedAt: string;

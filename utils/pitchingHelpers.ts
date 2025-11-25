@@ -220,6 +220,7 @@ export const getPitchingPerformanceOverTime = (pitchSessions: PitchSession[]): {
     avgMissDistance: number;
 }[] => {
     return pitchSessions
+        .filter(s => s.status === 'completed' || s.status === 'emergency_review')
         .sort((a, b) => new Date(a.sessionStartTime).getTime() - new Date(b.sessionStartTime).getTime())
         .slice(-10) // Last 10 sessions
         .map(session => {

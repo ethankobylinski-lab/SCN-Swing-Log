@@ -6,6 +6,10 @@ interface TeamGoalProgressCardProps {
 }
 
 export const TeamGoalProgressCard: React.FC<TeamGoalProgressCardProps> = ({ data }) => {
+    const participationPct = data.totalPlayers > 0
+        ? Math.round((data.contributingPlayers / data.totalPlayers) * 100)
+        : 0;
+
     return (
         <div className="bg-card border border-border rounded-xl shadow-sm p-6 space-y-6">
             {/* Header with Goal Name and Progress */}
@@ -31,7 +35,7 @@ export const TeamGoalProgressCard: React.FC<TeamGoalProgressCardProps> = ({ data
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
                 <div className="bg-muted/30 rounded-lg p-3 text-center">
                     <p className="text-2xl font-bold text-foreground">{data.totalReps.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Total Reps</p>
@@ -40,7 +44,20 @@ export const TeamGoalProgressCard: React.FC<TeamGoalProgressCardProps> = ({ data
                     <p className="text-2xl font-bold text-primary">{data.avgQuality}%</p>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Avg Quality</p>
                 </div>
+                <div className="bg-muted/30 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-secondary">{data.contributingPlayers}/{data.totalPlayers}</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Contributing</p>
+                </div>
             </div>
+
+            {/* Participation Alert */}
+            {participationPct < 70 && (
+                <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
+                    <p className="text-sm font-semibold text-warning">
+                        ⚠️ Only {participationPct}% team participation - Time to rally the squad!
+                    </p>
+                </div>
+            )}
 
             {/* Top Contributors */}
             <div>
@@ -75,6 +92,28 @@ export const TeamGoalProgressCard: React.FC<TeamGoalProgressCardProps> = ({ data
                     </p>
                 )}
             </div>
+
+            {/* Non-Contributors */}
+            {data.nonContributors.length > 0 && (
+                <div>
+                    <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                        <span className="text-destructive">🔴</span>
+                        Not Contributing Yet ({data.nonContributors.length})
+                    </h4>
+                    <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3">
+                        <div className="flex flex-wrap gap-2">
+                            {data.nonContributors.map(player => (
+                                <span
+                                    key={player.playerId}
+                                    className="px-2 py-1 bg-background border border-border rounded text-xs font-medium text-foreground"
+                                >
+                                    {player.name}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Low Engagement */}
             {data.lowEngagement.length > 0 && (

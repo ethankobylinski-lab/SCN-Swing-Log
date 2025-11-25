@@ -23,32 +23,32 @@ export const QualityQuantityMatrix: React.FC<QualityQuantityMatrixProps> = ({ da
         <div className={`${colorClass} rounded-lg p-4 space-y-3`}>
             <div>
                 <div className="flex items-center gap-2 mb-1">
-                    <span className="text-lg">{emoji}</span>
-                    <h4 className="font-semibold text-sm">{title}</h4>
+                    <span className="text-xl">{emoji}</span>
+                    <h4 className="font-bold text-base text-gray-900">{title}</h4>
                 </div>
-                <p className="text-[11px] opacity-80">{description}</p>
+                <p className="text-xs font-medium text-gray-700">{description}</p>
             </div>
 
-            <div className="text-2xl font-bold">
+            <div className="text-3xl font-bold text-gray-900">
                 {players.length}
             </div>
 
             {players.length > 0 ? (
-                <div className="space-y-1 max-h-32 overflow-y-auto">
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
                     {players.map(player => (
                         <div
                             key={player.playerId}
-                            className="bg-black/10 rounded px-2 py-1 text-xs flex items-center justify-between"
+                            className="bg-white border border-gray-200 rounded-md px-3 py-2 text-sm flex items-center justify-between shadow-sm"
                         >
-                            <span className="font-medium truncate">{player.name}</span>
-                            <span className="text-[10px] opacity-75 ml-2">
+                            <span className="font-semibold text-gray-900 truncate">{player.name}</span>
+                            <span className="text-xs font-medium text-gray-600 ml-2 whitespace-nowrap">
                                 {player.reps} reps • {player.quality}%
                             </span>
                         </div>
                     ))}
                 </div>
             ) : (
-                <p className="text-xs opacity-60 italic">No players</p>
+                <p className="text-xs text-gray-600 italic">No players</p>
             )}
         </div>
     );

@@ -13,6 +13,9 @@ export interface TeamGoalProgress {
     avgQuality: number;
     topContributors: { name: string; value: number; playerId: string }[];
     lowEngagement: { name: string; daysInactive: number; playerId: string }[];
+    totalPlayers: number;
+    contributingPlayers: number;
+    nonContributors: { name: string; playerId: string }[];
 }
 
 export interface ConsistencyData {
@@ -152,6 +155,16 @@ export function calculateTeamGoalProgress(
         .sort((a, b) => b.daysInactive - a.daysInactive)
         .slice(0, 5);
 
+    // Get non-contributors (players with no contributions at all)
+    const contributingPlayerIds = new Set(playerContributions.keys());
+    const nonContributors = players
+        .filter(p => !contributingPlayerIds.has(p.id))
+        .map(p => ({
+            playerId: p.id,
+            name: p.name
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
     return {
         goalName: goal.description,
         targetValue: goal.targetValue,
@@ -160,7 +173,10 @@ export function calculateTeamGoalProgress(
         totalReps,
         avgQuality,
         topContributors,
-        lowEngagement
+        lowEngagement,
+        totalPlayers: players.length,
+        contributingPlayers: contributingPlayerIds.size,
+        nonContributors
     };
 }
 

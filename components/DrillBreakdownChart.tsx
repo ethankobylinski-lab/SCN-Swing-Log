@@ -16,13 +16,10 @@ export const DrillBreakdownChart: React.FC<DrillBreakdownChartProps> = ({ data }
 
     return (
         <div className="bg-card border border-border rounded-xl shadow-sm p-6 space-y-6">
-            {/* Header */}
-            <div>
-                <h3 className="text-lg font-semibold text-foreground">Drill Type Usage & Success</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Showing which drills are being trained and how well
-                </p>
-            </div>
+            {/* Description */}
+            <p className="text-sm text-muted-foreground">
+                Showing which drills are being trained and how well players are executing them
+            </p>
 
             {/* Drill List */}
             <div className="space-y-4">
@@ -31,26 +28,26 @@ export const DrillBreakdownChart: React.FC<DrillBreakdownChartProps> = ({ data }
                         {/* Drill Name and Stats */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <span className="text-sm font-medium text-muted-foreground w-6">
+                                <span className="text-sm font-semibold text-gray-700 w-6">
                                     #{index + 1}
                                 </span>
                                 <div>
-                                    <h4 className="font-semibold text-foreground flex items-center gap-2">
+                                    <h4 className="font-bold text-foreground flex items-center gap-2">
                                         {drill.drillType}
                                         {drill.isUndertrained && (
-                                            <span className="text-xs px-2 py-0.5 bg-warning/20 text-warning rounded-full">
+                                            <span className="text-xs font-semibold px-2 py-0.5 bg-warning/20 text-warning rounded-full">
                                                 Under-trained
                                             </span>
                                         )}
                                     </h4>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs font-medium text-muted-foreground">
                                         {drill.totalReps.toLocaleString()} reps • {drill.usagePercent}% of total volume
                                     </p>
                                 </div>
                             </div>
                             <div className="text-right">
                                 <p className="text-2xl font-bold text-primary">{drill.successRate}%</p>
-                                <p className="text-xs text-muted-foreground">Success</p>
+                                <p className="text-xs font-medium text-muted-foreground">Success</p>
                             </div>
                         </div>
 
@@ -68,10 +65,10 @@ export const DrillBreakdownChart: React.FC<DrillBreakdownChartProps> = ({ data }
                             <div className="flex-1 bg-muted/30 rounded-full h-2 overflow-hidden">
                                 <div
                                     className={`h-full rounded-full transition-all duration-300 ${drill.successRate >= 75
-                                            ? 'bg-success'
-                                            : drill.successRate >= 50
-                                                ? 'bg-warning'
-                                                : 'bg-destructive'
+                                        ? 'bg-success'
+                                        : drill.successRate >= 50
+                                            ? 'bg-warning'
+                                            : 'bg-destructive'
                                         }`}
                                     style={{ width: `${drill.successRate}%` }}
                                 />
@@ -83,7 +80,7 @@ export const DrillBreakdownChart: React.FC<DrillBreakdownChartProps> = ({ data }
 
             {/* Legend */}
             <div className="border-t border-border pt-4 mt-4">
-                <div className="flex items-center justify-center gap-6 text-xs text-muted-foreground">
+                <div className="flex items-center justify-center gap-6 text-xs font-medium text-muted-foreground">
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-2 bg-accent rounded-full" />
                         <span>Usage Volume</span>
@@ -94,7 +91,7 @@ export const DrillBreakdownChart: React.FC<DrillBreakdownChartProps> = ({ data }
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-2 bg-warning rounded-full" />
-                        <span>Under-trained (\u003c20%)</span>
+                        <span>Under-trained (&lt;20%)</span>
                     </div>
                 </div>
             </div>

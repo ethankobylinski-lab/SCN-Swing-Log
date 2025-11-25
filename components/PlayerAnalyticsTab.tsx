@@ -35,7 +35,20 @@ export const PlayerAnalyticsTab: React.FC<PlayerAnalyticsTabProps> = ({
         localStorage.setItem(ANALYTICS_MODE_KEY, mode);
     }, [mode]);
 
-    const pitchingAnalyticsData = usePitchingAnalytics(pitchSessions, [player]);
+    const { getPitchTypesForPitcher } = useContext(DataContext)!;
+    const [pitchTypes, setPitchTypes] = useState<PitchTypeModel[]>([]);
+
+    useEffect(() => {
+        const loadPitchTypes = async () => {
+            if (player?.id) {
+                const types = await getPitchTypesForPitcher(player.id);
+                setPitchTypes(types);
+            }
+        };
+        loadPitchTypes();
+    }, [player?.id, getPitchTypesForPitcher]);
+
+    const pitchingAnalyticsData = usePitchingAnalytics(pitchSessions, [player], pitchTypes);
 
     return (
         <div className="space-y-6">
