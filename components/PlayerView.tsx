@@ -36,409 +36,20 @@ import { generatePitchSessionTitle } from '../utils/sessionTitleGenerator';
 import { supabase } from '../supabaseClient';
 
 import { WorkloadCalendar } from './WorkloadCalendar';
+import { FloatingActionButton } from './FloatingActionButton';
+import { SessionTypeBottomSheet } from './SessionTypeBottomSheet';
+import { PlayerDashboardTab } from './PlayerDashboardTab';
+import { HittingTab } from './HittingTab';
+import { PitchingTab } from './PitchingTab';
+import { BaseballIcon } from './icons/BaseballIcon';
+import { TargetIcon } from './icons/TargetIcon';
+import { GoalProgress } from './GoalProgress';
+import { SessionHistory } from './SessionHistory';
+import { GoalForm } from './GoalForm';
+import { GoalDetail } from './GoalDetail';
 
-const doesSetMatchGoal = (goal: PersonalGoal, session: Session, set: SetResult, drills: Drill[]) => {
-    if (goal.drillType) {
-        const setDrillType = resolveDrillTypeForSet(session, set, drills);
-        if (setDrillType !== goal.drillType) {
-            return false;
-        }
-    }
-    if (goal.targetZones && goal.targetZones.length > 0) {
-        if (!set.targetZones?.some((zone) => goal.targetZones!.includes(zone))) {
-            return false;
-        }
-    }
-    if (goal.pitchTypes && goal.pitchTypes.length > 0) {
-        if (!set.pitchTypes?.some((pitch) => goal.pitchTypes!.includes(pitch))) {
-            return false;
-        }
-    }
-    return true;
-};
 
-const collectGoalSets = (goal: PersonalGoal, sessions: Session[], drills: Drill[]) => {
-    return sessions.flatMap((session) =>
-        session.sets
-            .filter((set) => doesSetMatchGoal(goal, session, set, drills))
-            .map((set) => ({ session, set })),
-    );
-};
 
-const summarizeSets = (sets: SetResult[]) =>
-    sets.reduce(
-        (acc, set) => ({
-            attempted: acc.attempted + set.repsAttempted,
-            executed: acc.executed + set.repsExecuted,
-            hardHits: acc.hardHits + set.hardHits,
-            strikeouts: acc.strikeouts + set.strikeouts,
-        }),
-        { attempted: 0, executed: 0, hardHits: 0, strikeouts: 0 },
-    );
-
-const getGoalValueForSets = (goal: PersonalGoal, sets: SetResult[]) => {
-    switch (goal.metric) {
-        case 'Execution %':
-            return calculateExecutionPercentage(sets);
-        case 'Hard Hit %':
-            return calculateHardHitPercentage(sets);
-        case 'No Strikeouts':
-            return sets.reduce((sum, set) => sum + set.strikeouts, 0);
-        case 'Total Reps':
-            return sets.reduce((sum, set) => sum + set.repsAttempted, 0);
-        default:
-            return 0;
-    }
-};
-
-const getPitchingGoalValue = (goal: PersonalGoal, sessions: PitchSession[]) => {
-    // Filter sessions by date range
-    const relevantSessions = sessions.filter(s => {
-        const d = new Date(s.date);
-        return d >= new Date(goal.startDate) && d <= new Date(goal.targetDate);
-    });
-
-    switch (goal.metric) {
-        case 'Strike %':
-            const totalPitches = relevantSessions.reduce((sum, s) => sum + (s.totalPitches || 0), 0);
-            if (totalPitches === 0) return 0;
-            const strikes = relevantSessions.flatMap(s => s.pitchRecords || []).filter(p => ['called_strike', 'swinging_strike', 'foul', 'in_play'].includes(p.outcome)).length;
-            return Math.round((strikes / totalPitches) * 100);
-        case 'Velocity':
-            // Max velocity in period
-            let maxVel = 0;
-            relevantSessions.forEach(s => {
-                s.pitchRecords?.forEach(p => {
-                    if (p.velocityMph && p.velocityMph > maxVel) maxVel = p.velocityMph;
-                });
-            });
-            return maxVel;
-        case 'Command':
-            // Placeholder for command score logic if complex, or simple strike % equivalent for now
-            // For now, let's use Strike % logic as a proxy or 0 if not defined
-            return 0;
-        default:
-            return 0;
-    }
-};
-
-const resolveMinRepsRequirement = (goal: PersonalGoal): number | undefined => {
-    if (goal.metric !== 'Execution %') {
-        return undefined;
-    }
-    return goal.minReps ?? 50;
-};
-
-export const GoalProgress: React.FC<{
-    goal: PersonalGoal;
-    sessions: Session[];
-    pitchSessions: PitchSession[];
-    drills: Drill[];
-    onDelete: (goalId: string) => Promise<void>;
-    onSelect?: (goal: PersonalGoal) => void;
-}> = ({ goal, sessions, pitchSessions, drills, onDelete, onSelect }) => {
-    const isPitchingGoal = ['Strike %', 'Velocity', 'Command'].includes(goal.metric);
-
-    const goalSets = useMemo(() => !isPitchingGoal ? collectGoalSets(goal, sessions, drills) : [], [goal, sessions, drills, isPitchingGoal]);
-    const filteredSets = goalSets.map(({ set }) => set);
-
-    const currentValue = isPitchingGoal
-        ? getPitchingGoalValue(goal, pitchSessions)
-        : (filteredSets.length > 0 ? getGoalValueForSets(goal, filteredSets) : 0);
-
-    const totalRepsLogged = !isPitchingGoal ? filteredSets.reduce((sum, set) => sum + set.repsAttempted, 0) : 0;
-    const minRepsRequired = resolveMinRepsRequirement(goal);
-    const volumeRatio =
-        minRepsRequired && minRepsRequired > 0 ? Math.min(totalRepsLogged / minRepsRequired, 1) : 1;
-    const [isDeleting, setIsDeleting] = useState(false);
-
-    const handleDelete = async () => {
-        if (isDeleting) return;
-        setIsDeleting(true);
-        try {
-            await onDelete(goal.id);
-        } finally {
-            setIsDeleting(false);
-        }
-    };
-
-    let progress = 0;
-    if (goal.targetValue > 0) {
-        if (goal.metric === 'No Strikeouts') {
-            progress = Math.max(0, 100 - (currentValue / goal.targetValue * 100));
-        } else {
-            progress = (currentValue / goal.targetValue) * 100;
-        }
-    } else if (goal.metric === 'No Strikeouts' && goal.targetValue === 0) {
-        progress = currentValue === 0 ? 100 : 0;
-    }
-
-    const isPercentage = goal.metric.includes('%');
-    const displayValue = isPercentage ? `${currentValue}%` : currentValue;
-    const displayTarget = isPercentage ? `${goal.targetValue}%` : goal.targetValue;
-    if (goal.metric === 'Execution %' && minRepsRequired) {
-        progress *= volumeRatio;
-    }
-    const handleSelect = () => {
-        if (onSelect) {
-            onSelect(goal);
-        }
-    };
-    const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-        if (!onSelect) return;
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            onSelect(goal);
-        }
-    };
-
-    return (
-        <div
-            className={`bg-card border border-border/60 p-4 rounded-xl space-y-3 shadow-sm ${onSelect ? 'cursor-pointer hover:border-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary/60' : ''
-                }`}
-            role={onSelect ? 'button' : undefined}
-            tabIndex={onSelect ? 0 : undefined}
-            onClick={handleSelect}
-            onKeyDown={handleKeyDown}
-        >
-            <div className="flex justify-between items-start gap-4">
-                <div>
-                    <h4 className="font-semibold text-card-foreground">{formatGoalName(goal)}</h4>
-                    <p className="text-xs text-muted-foreground">Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        {goal.createdByRole === UserRole.Coach ? 'Coach-assigned goal' : 'Self-set goal'}
-                    </p>
-                </div>
-                <button
-                    onClick={(event) => {
-                        event.stopPropagation();
-                        handleDelete();
-                    }}
-                    disabled={isDeleting}
-                    aria-label="Delete goal"
-                    className="text-muted-foreground hover:text-destructive text-lg font-bold disabled:opacity-50"
-                >
-                    {isDeleting ? '...' : '\u00d7'}
-                </button>
-            </div>
-            <div className="flex items-center gap-3 mt-2">
-                <div className="w-full bg-background rounded-full h-2.5">
-                    <div className="bg-secondary h-2.5 rounded-full" style={{ width: `${Math.min(progress, 100)}%` }}></div>
-                </div>
-                <span className="text-sm font-bold text-primary">{displayValue}</span>
-            </div>
-            {goal.metric === 'Execution %' && minRepsRequired && (
-                <p className="text-[11px] text-muted-foreground">
-                    Volume: {totalRepsLogged}/{minRepsRequired} reps logged
-                </p>
-            )}
-        </div>
-    );
-};
-
-interface GoalDetailProps {
-    goal: PersonalGoal;
-    sessions: Session[];
-    drills: Drill[];
-    reflection: string;
-    onReflectionChange: (value: string) => void;
-    onSaveReflection: () => Promise<void> | void;
-    isSavingReflection: boolean;
-    errorMessage?: string | null;
-}
-
-const GoalDetail: React.FC<GoalDetailProps> = ({
-    goal,
-    sessions,
-    drills,
-    reflection,
-    onReflectionChange,
-    onSaveReflection,
-    isSavingReflection,
-    errorMessage,
-}) => {
-    const goalSets = useMemo(() => collectGoalSets(goal, sessions, drills), [goal, sessions, drills]);
-    const filteredSets = useMemo(() => goalSets.map(({ set }) => set), [goalSets]);
-    const currentValue = filteredSets.length > 0 ? getGoalValueForSets(goal, filteredSets) : 0;
-    const totalRepsLogged = filteredSets.reduce((sum, set) => sum + set.repsAttempted, 0);
-    const minRepsRequired = resolveMinRepsRequirement(goal);
-    const volumeRatio =
-        minRepsRequired && minRepsRequired > 0 ? Math.min(totalRepsLogged / minRepsRequired, 1) : 1;
-    const isPercentageMetric = goal.metric.includes('%');
-    const displayValue = isPercentageMetric ? `${currentValue}%` : currentValue;
-    const displayTarget = isPercentageMetric ? `${goal.targetValue}%` : goal.targetValue;
-    const progressPercent = useMemo(() => {
-        let base = 0;
-        if (goal.metric === 'No Strikeouts') {
-            if (goal.targetValue === 0) {
-                base = currentValue === 0 ? 100 : 0;
-            } else if (goal.targetValue > 0) {
-                base = Math.max(0, 100 - (currentValue / goal.targetValue) * 100);
-            }
-        } else if (goal.targetValue > 0) {
-            base = (currentValue / goal.targetValue) * 100;
-        }
-        if (goal.metric === 'Execution %' && minRepsRequired) {
-            return base * volumeRatio;
-        }
-        return base;
-    }, [goal.metric, goal.targetValue, currentValue, minRepsRequired, volumeRatio]);
-
-    type GoalSessionContribution = {
-        session: Session;
-        value: number;
-        matchingSets: SetResult[];
-        aggregates: ReturnType<typeof summarizeSets>;
-    };
-
-    const sessionContributions = useMemo<GoalSessionContribution[]>(() => {
-        const grouped = new Map<string, { session: Session; matchingSets: SetResult[] }>();
-        goalSets.forEach(({ session, set }) => {
-            if (!grouped.has(session.id)) {
-                grouped.set(session.id, { session, matchingSets: [] });
-            }
-            grouped.get(session.id)!.matchingSets.push(set);
-        });
-
-        return Array.from(grouped.values())
-            .map(({ session, matchingSets }) => ({
-                session,
-                matchingSets,
-                value: getGoalValueForSets(goal, matchingSets),
-                aggregates: summarizeSets(matchingSets),
-            }))
-            .sort((a, b) => new Date(b.session.date).getTime() - new Date(a.session.date).getTime());
-    }, [goal, goalSets]);
-
-    const filterChips = [
-        goal.drillType ? `Drill: ${goal.drillType}` : null,
-        goal.targetZones?.length ? `Zones: ${goal.targetZones.join(', ')}` : null,
-        goal.pitchTypes?.length ? `Pitch Types: ${goal.pitchTypes.join(', ')}` : null,
-        minRepsRequired ? `Min Reps: ${minRepsRequired}` : null,
-    ].filter(Boolean);
-
-    return (
-        <div className="space-y-6">
-            <section className="rounded-2xl border border-border bg-muted/10 p-4 space-y-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <p className="text-sm text-muted-foreground uppercase tracking-wide">{goal.metric}</p>
-                        <h3 className="text-2xl font-semibold text-foreground">{formatGoalName(goal)}</h3>
-                        <p className="text-xs text-muted-foreground">Due by {formatDate(goal.targetDate)} · Started {formatDate(goal.startDate)}</p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Current</p>
-                        <p className="text-3xl font-bold text-primary">{displayValue}</p>
-                        <p className="text-xs text-muted-foreground">Target {displayTarget}</p>
-                    </div>
-                </div>
-                <div className="bg-background rounded-full h-3">
-                    <div className="h-3 rounded-full bg-secondary" style={{ width: `${Math.min(progressPercent, 100)}%` }} />
-                </div>
-                {goal.metric === 'Execution %' && minRepsRequired && (
-                    <p className="text-xs text-muted-foreground">
-                        Volume: {totalRepsLogged}/{minRepsRequired} reps logged
-                        {totalRepsLogged < minRepsRequired ? ` (${minRepsRequired - totalRepsLogged} more to unlock full credit)` : ''}
-                    </p>
-                )}
-            </section>
-
-            <section className="space-y-3">
-                <p className="text-sm font-semibold text-muted-foreground">Goal Filters</p>
-                {filterChips.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                        {filterChips.map((chip, index) => (
-                            <span key={`${chip}-${index}`} className="px-3 py-1 rounded-full bg-secondary/20 text-secondary text-xs font-semibold">
-                                {chip}
-                            </span>
-                        ))}
-                    </div>
-                ) : (
-                    <p className="text-sm text-muted-foreground">This goal applies to every drill, zone, and pitch type.</p>
-                )}
-            </section>
-
-            <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-muted-foreground">Reflection</p>
-                    <Button
-                        type="button"
-                        onClick={() => onSaveReflection()}
-                        isLoading={isSavingReflection}
-                        variant="primary"
-                        size="sm"
-                    >
-                        Save Reflection
-                    </Button>
-                </div>
-                {errorMessage && <p className="text-xs text-destructive">{errorMessage}</p>}
-                <textarea
-                    value={reflection}
-                    onChange={(event) => onReflectionChange(event.target.value)}
-                    placeholder="What are you learning as you chase this goal?"
-                    rows={4}
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/60"
-                />
-            </section>
-
-            <section className="space-y-3">
-                <div>
-                    <p className="text-sm font-semibold text-muted-foreground">Sessions Moving the Needle</p>
-                    <p className="text-xs text-muted-foreground">Only the sets that match this goal show up here.</p>
-                </div>
-                {sessionContributions.length > 0 ? (
-                    <div className="space-y-3 max-h-[320px] overflow-y-auto pr-2">
-                        {sessionContributions.map(({ session, value, aggregates, matchingSets }) => {
-                            const valueLabel = goal.metric.includes('%') ? `${value}%` : value;
-                            return (
-                                <div key={session.id} className="rounded-xl border border-border/60 p-3 bg-card space-y-2">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="font-semibold text-foreground">{session.name}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {formatDate(session.date)} · {describeRelativeDay(session.date) ?? 'logged'}
-                                            </p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[10px] uppercase text-muted-foreground tracking-wide">{goal.metric}</p>
-                                            <p className="text-lg font-bold text-primary">{valueLabel}</p>
-                                            <p className="text-[11px] text-muted-foreground">vs {displayTarget}</p>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-muted-foreground">
-                                        <div className="rounded-lg bg-muted/40 px-2 py-1">
-                                            <p className="font-semibold text-foreground">{matchingSets.length}</p>
-                                            <p className="uppercase tracking-wide">Sets logged</p>
-                                        </div>
-                                        <div className="rounded-lg bg-muted/40 px-2 py-1">
-                                            <p className="font-semibold text-foreground">{aggregates.attempted}</p>
-                                            <p className="uppercase tracking-wide">Reps</p>
-                                        </div>
-                                        <div className="rounded-lg bg-muted/40 px-2 py-1">
-                                            <p className="font-semibold text-foreground">{aggregates.executed}</p>
-                                            <p className="uppercase tracking-wide">Executed</p>
-                                        </div>
-                                        <div className="rounded-lg bg-muted/40 px-2 py-1">
-                                            <p className="font-semibold text-foreground">{aggregates.hardHits}</p>
-                                            <p className="uppercase tracking-wide">Hard Hits</p>
-                                        </div>
-                                    </div>
-                                    {session.reflection && (
-                                        <p className="text-xs text-muted-foreground italic">"{session.reflection}"</p>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
-                        Log a session that matches this goal’s filters, and it will show up here automatically.
-                    </div>
-                )}
-            </section>
-        </div>
-    );
-};
 
 const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: Drill[]; playerId?: string; }> = ({ goal, sessions, drills, playerId }) => {
     const currentValue = getCurrentTeamMetricValue(goal, sessions, drills);
@@ -507,457 +118,6 @@ const TeamGoalProgress: React.FC<{ goal: TeamGoal; sessions: Session[]; drills: 
                 </div>
             )}
         </div>
-    );
-};
-
-const PlayerDashboard: React.FC<{
-    player: Player;
-    assignedDrills: Drill[];
-    recentSessions: Session[];
-    pitchSessions: PitchSession[];
-    drills: Drill[];
-    goals: PersonalGoal[];
-    teamGoals: TeamGoal[];
-    teamSessions: Session[];
-    onStartAssignedSession: (drill: Drill) => void;
-    assignedSimulations: (PitchSimulationTemplate & { dueDate?: string; completionCount?: number; isRecurring?: boolean })[];
-    onStartSimulation: (template: PitchSimulationTemplate & { dueDate?: string; completionCount?: number; isRecurring?: boolean }) => void;
-    activeTeamId?: string;
-    loading?: boolean;
-}> = ({ player, assignedDrills, recentSessions, pitchSessions, drills, goals, teamGoals, teamSessions, onStartAssignedSession, assignedSimulations, onStartSimulation, activeTeamId, loading = false }) => {
-
-    const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-    const { createGoal, deleteGoal, updateGoal, databaseError } = useContext(DataContext)!;
-    const teamId = activeTeamId;
-    const [goalFormError, setGoalFormError] = useState<string | null>(null);
-    const [goalListError, setGoalListError] = useState<string | null>(null);
-    const [isSavingGoal, setIsSavingGoal] = useState(false);
-    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
-    const [goalReflection, setGoalReflection] = useState('');
-    const [isSavingReflection, setIsSavingReflection] = useState(false);
-    const [goalDetailError, setGoalDetailError] = useState<string | null>(null);
-    const selectedGoal = useMemo(() => goals.find(g => g.id === selectedGoalId) ?? null, [goals, selectedGoalId]);
-
-    useEffect(() => {
-        if (selectedGoal) {
-            setGoalReflection(selectedGoal.reflection ?? '');
-        } else {
-            setGoalReflection('');
-        }
-    }, [selectedGoal]);
-
-    const overallExecutionPct = useMemo(() => {
-        const allSets = recentSessions.flatMap(s => s.sets);
-        if (allSets.length === 0) return 0;
-        return calculateExecutionPercentage(allSets);
-    }, [recentSessions]);
-
-    const handleOpenGoalDetail = (goal: PersonalGoal) => {
-        setSelectedGoalId(goal.id);
-        setGoalDetailError(null);
-    };
-
-    const handleCloseGoalDetail = () => {
-        if (isSavingReflection) return;
-        setSelectedGoalId(null);
-        setGoalDetailError(null);
-    };
-
-    const handleSaveGoalReflection = async () => {
-        if (!selectedGoal) return;
-        setGoalDetailError(null);
-        setIsSavingReflection(true);
-        try {
-            const trimmedReflection = goalReflection.trim();
-            await updateGoal(selectedGoal.id, { reflection: trimmedReflection });
-            setGoalReflection(trimmedReflection);
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'Unable to save reflection. Please try again.';
-            setGoalDetailError(message);
-        } finally {
-            setIsSavingReflection(false);
-        }
-    };
-
-    const handleCreateGoal = async (goalData: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate' | 'teamId'>) => {
-        if (!teamId) {
-            setGoalFormError('Join a team before setting goals.');
-            return;
-        }
-
-        setGoalFormError(null);
-        setIsSavingGoal(true);
-        try {
-            await createGoal({
-                ...goalData,
-                playerId: player.id,
-                teamId,
-                status: 'Active',
-                startDate: new Date().toISOString()
-            });
-            setIsGoalModalOpen(false);
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'Unable to save this goal. Please try again.';
-            setGoalFormError(message);
-        } finally {
-            setIsSavingGoal(false);
-        }
-    };
-
-    const handleDeleteGoal = async (goalId: string) => {
-        setGoalListError(null);
-        try {
-            await deleteGoal(goalId);
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'Unable to delete this goal. Please try again.';
-            setGoalListError(message);
-        }
-    };
-
-    const StatCard: React.FC<{ title: string; value: string; }> = ({ title, value }) => (
-        <div className="bg-card border border-border p-4 rounded-lg shadow-sm text-center">
-            <h3 className="text-sm font-semibold text-muted-foreground">{title}</h3>
-            <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
-        </div>
-    );
-
-    if (databaseError) {
-        return (
-            <EmptyState
-                title="Connection Error"
-                message="We couldn't load your dashboard data. Please check your connection and try again."
-                icon="⚠️"
-                actionLabel="Retry"
-                onAction={() => window.location.reload()}
-            />
-        );
-    }
-
-    return (
-        <div className="space-y-8">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {loading ? (
-                    <>
-                        <StatCardSkeleton />
-                        <StatCardSkeleton />
-                        <StatCardSkeleton />
-                    </>
-                ) : (
-                    <>
-                        <StatCard title="Drills for Today" value={assignedDrills.length.toString()} />
-                        <StatCard title="Overall Execution" value={`${overallExecutionPct}%`} />
-                        <StatCard title="Active Goals" value={goals.length.toString()} />
-                    </>
-                )}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-8">
-                    <div>
-                        <h2 className="text-xl font-bold text-foreground mb-4">Today's Drills</h2>
-                        {loading ? (
-                            <ListSkeleton count={2} />
-                        ) : assignedDrills.length > 0 ? (
-                            <div className="space-y-4">
-                                {assignedDrills.map(drill => (
-                                    <div key={drill.id} className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col justify-between">
-                                        <div>
-                                            <h3 className="font-bold text-primary">{drill.name}</h3>
-                                            <p className="text-sm text-muted-foreground mt-1 mb-3">{drill.description}</p>
-                                            <p className="text-xs text-card-foreground"><strong>Goal:</strong> {drill.goalType} &gt;= {drill.goalTargetValue}{drill.goalType.includes('%') ? '%' : ''}</p>
-                                        </div>
-                                        <Button
-                                            onClick={() => onStartAssignedSession(drill)}
-                                            variant="secondary"
-                                            fullWidth
-                                            className="mt-4"
-                                        >
-                                            Start Session
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <NoAssignedDrillsEmpty />
-                        )}
-                    </div>
-
-                    <div>
-                        <h2 className="text-xl font-bold text-foreground mb-4">Assigned Pitching Programs</h2>
-                        {loading ? (
-                            <ListSkeleton count={1} />
-                        ) : assignedSimulations && assignedSimulations.length > 0 ? (
-                            <div className="space-y-4">
-                                {assignedSimulations.map(program => (
-                                    <div key={program.id} className="bg-card border border-border p-4 rounded-lg shadow-sm flex flex-col justify-between">
-                                        <div>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h3 className="font-bold text-primary">{program.name}</h3>
-                                                <div className="flex gap-2">
-                                                    {program.completionCount !== undefined && program.completionCount > 0 && (
-                                                        <span className="px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-full font-semibold border border-green-500/20">
-                                                            ✓ Completed{program.completionCount > 1 ? ` (${program.completionCount})` : ''}
-                                                        </span>
-                                                    )}
-                                                    <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full font-semibold">
-                                                        Program
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <p className="text-sm text-muted-foreground mt-1 mb-3">{program.description || 'No description provided.'}</p>
-                                        </div>
-                                        <Button
-                                            onClick={() => onStartSimulation(program)}
-                                            variant="secondary"
-                                            fullWidth
-                                            className="mt-4"
-                                        >
-                                            View Details
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="bg-card border border-border p-6 rounded-lg text-center">
-                                <p className="text-muted-foreground">No pitching programs assigned.</p>
-                            </div>
-                        )}
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-foreground mb-4">Active Team Goals</h2>
-                        <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                            {loading ? (
-                                <ListSkeleton count={1} />
-                            ) : teamGoals.length > 0 ? (
-                                <div className="space-y-4">
-                                    {teamGoals.map(g => <TeamGoalProgress key={g.id} goal={g} sessions={teamSessions} drills={drills} playerId={player.id} />)}
-                                </div>
-                            ) : (
-                                <EmptyState
-                                    icon="🏆"
-                                    title="No Team Goals"
-                                    message="Once your coach sets a team goal, it will appear here."
-                                />
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div>
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-bold text-foreground">My Goals</h2>
-                        <Button
-                            onClick={() => {
-                                setGoalFormError(null);
-                                setIsGoalModalOpen(true);
-                            }}
-                            variant="primary"
-                            size="sm"
-                        >
-                            + Set Goal
-                        </Button>
-                    </div>
-                    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                        {goalListError && <p className="text-sm text-destructive mb-3">{goalListError}</p>}
-                        {loading ? (
-                            <ListSkeleton count={2} />
-                        ) : goals.length > 0 ? (
-                            <div className="space-y-4">
-                                {goals.map(g => (
-                                    <GoalProgress
-                                        key={g.id}
-                                        goal={g}
-                                        sessions={recentSessions}
-                                        pitchSessions={pitchSessions}
-                                        drills={drills}
-                                        onDelete={handleDeleteGoal}
-                                        onSelect={handleOpenGoalDetail}
-                                    />
-                                ))}
-                            </div>
-                        ) : (
-                            <NoGoalsEmpty onCreateGoal={() => {
-                                setGoalFormError(null);
-                                setIsGoalModalOpen(true);
-                            }} />
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                <WorkloadCalendar
-                    hittingSessions={recentSessions}
-                    pitchingSessions={pitchSessions}
-                    players={[player]}
-                    days={14}
-                />
-            </div>
-
-            <Modal
-                isOpen={Boolean(selectedGoal)}
-                onClose={handleCloseGoalDetail}
-                title={selectedGoal ? formatGoalName(selectedGoal) : 'Goal Details'}
-            >
-                {selectedGoal && (
-                    <GoalDetail
-                        goal={selectedGoal}
-                        sessions={recentSessions}
-                        drills={drills}
-                        reflection={goalReflection}
-                        onReflectionChange={setGoalReflection}
-                        onSaveReflection={handleSaveGoalReflection}
-                        isSavingReflection={isSavingReflection}
-                        errorMessage={goalDetailError}
-                    />
-                )}
-            </Modal>
-
-            <Modal
-                isOpen={isGoalModalOpen}
-                onClose={() => {
-                    if (isSavingGoal) return;
-                    setGoalFormError(null);
-                    setIsGoalModalOpen(false);
-                }}
-                title="Set a New Goal"
-            >
-                <GoalForm onSave={handleCreateGoal} isSaving={isSavingGoal} errorMessage={goalFormError} />
-            </Modal>
-        </div>
-    );
-};
-
-export type GoalFormValues = Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate' | 'teamId'>;
-
-export const GoalForm: React.FC<{ onSave: (data: GoalFormValues) => Promise<void> | void; isSaving?: boolean; errorMessage?: string | null; }> = ({ onSave, isSaving = false, errorMessage }) => {
-    const [metric, setMetric] = useState<GoalType>('Execution %');
-    const [targetValue, setTargetValue] = useState(85);
-    const [targetDate, setTargetDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]); // 30 days from now
-    const [drillType, setDrillType] = useState<DrillType | undefined>(undefined);
-    const [targetZones, setTargetZones] = useState<TargetZone[]>([]);
-    const [pitchTypes, setPitchTypes] = useState<PitchType[]>([]);
-    const [minReps, setMinReps] = useState(50);
-
-    const handleTargetZoneSelect = (zone: TargetZone) => {
-        setTargetZones(prev => prev.includes(zone) ? prev.filter(z => z !== zone) : [...prev, zone]);
-    };
-    const handlePitchTypeSelect = (pitch: PitchType) => {
-        setPitchTypes(prev => prev.includes(pitch) ? prev.filter(p => p !== pitch) : [...prev, pitch]);
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const goalData: GoalFormValues = {
-            metric,
-            targetValue,
-            targetDate,
-        };
-        if (drillType) goalData.drillType = drillType;
-        if (targetZones.length > 0) goalData.targetZones = targetZones;
-        if (pitchTypes.length > 0) goalData.pitchTypes = pitchTypes;
-        if (metric === 'Execution %') {
-            goalData.minReps = Math.max(1, minReps);
-        }
-        try {
-            await onSave(goalData);
-        } catch (err) {
-            // Error is handled by parent, but we catch here to prevent bubbling if needed
-            console.error('Goal save failed:', err);
-        }
-    };
-
-    return (
-        <form onSubmit={handleSubmit} className="space-y-6">
-            {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label className="block text-sm font-medium text-muted-foreground">Metric</label>
-                    <select value={metric} onChange={e => setMetric(e.target.value as GoalType)} className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
-                        {GOAL_TYPES.map(g => <option key={g} value={g}>{g}</option>)}
-                        <option value="Strike %">Strike %</option>
-                        <option value="Velocity">Velocity (mph)</option>
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-muted-foreground">Target Value</label>
-                    <input type="number" value={targetValue} onChange={e => setTargetValue(parseInt(e.target.value))} required className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
-                </div>
-            </div>
-            {metric === 'Execution %' && (
-                <div>
-                    <label className="block text-sm font-medium text-muted-foreground">Minimum Reps</label>
-                    <input
-                        type="number"
-                        min={1}
-                        value={minReps}
-                        onChange={(e) => setMinReps(parseInt(e.target.value) || 0)}
-                        className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">Need at least this many reps before execution % can hit the goal. Default is 50.</p>
-                </div>
-            )}
-            <div>
-                <label className="block text-sm font-medium text-muted-foreground">Target Date</label>
-                <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} required className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm" />
-            </div>
-
-            <div>
-                <h4 className="text-md font-semibold text-muted-foreground border-b border-border pb-2 mb-3">Goal Specificity (Optional)</h4>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground">Drill Type</label>
-                        <select value={drillType || ''} onChange={e => setDrillType(e.target.value as DrillType || undefined)} className="mt-1 block w-full bg-background border-input rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
-                            <option value="">Any Drill Type</option>
-                            {DRILL_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">Target Zones</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {TARGET_ZONES.map(zone => (
-                                <Button type="button" key={zone} onClick={() => handleTargetZoneSelect(zone)} variant={targetZones.includes(zone) ? 'primary' : 'ghost'} size="sm">{zone}</Button>
-                            ))}
-                        </div>
-                        {targetZones.length > 0 && (
-                            <p className="mt-2 text-xs text-muted-foreground">
-                                Selected: <span className="font-semibold text-foreground">{targetZones.join(', ')}</span>
-                            </p>
-                        )}
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">Pitch Types</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {PITCH_TYPES.map(pitch => (
-                                <Button
-                                    type="button"
-                                    key={pitch}
-                                    onClick={() => handlePitchTypeSelect(pitch)}
-                                    variant={pitchTypes.includes(pitch) ? 'primary' : 'ghost'}
-                                    size="sm"
-                                >
-                                    {pitch}
-                                </Button>
-                            ))}
-                        </div>
-                        {pitchTypes.length > 0 && (
-                            <p className="mt-2 text-xs text-muted-foreground">
-                                Selected: <span className="font-semibold text-foreground">{pitchTypes.join(', ')}</span>
-                            </p>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex gap-3 justify-end pt-4">
-                <Button
-                    type="submit"
-                    variant="primary"
-                    isLoading={isSaving}
-                >
-                    Save Goal
-                </Button>
-            </div>
-        </form>
     );
 };
 
@@ -1538,48 +698,48 @@ const PitchingOverviewCard: React.FC<{ stats: PitchingStatsSummary; sessions: Se
     const lastSessionDetail = stats.lastSessionDate ? `${stats.recentStrikePercentage}% strike rate` : 'Log a bullpen to unlock insights.';
 
     return (
-        <div className="bg-card border border-border rounded-xl shadow-sm p-6 space-y-6">
+        <div className="bg-card border border-border rounded-xl shadow-sm p-7 space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-xl font-semibold text-foreground">Pitching Overview</h2>
-                    <p className="text-sm text-muted-foreground">Bullpen strike efficiency and workload totals.</p>
+                    <h2 className="text-xl font-bold text-foreground">Pitching Overview</h2>
+                    <p className="text-sm text-foreground/60 mt-0.5">Bullpen strike efficiency and workload totals.</p>
                 </div>
                 <div className="text-right">
-                    <p className="text-4xl font-bold text-primary">{stats.overallStrikePercentage}%</p>
-                    <p className="text-xs uppercase text-muted-foreground tracking-wide">Overall Strike %</p>
+                    <p className="text-5xl font-bold text-primary">{stats.overallStrikePercentage}%</p>
+                    <p className="text-xs uppercase text-foreground/70 tracking-wide font-semibold">Overall Strike %</p>
                 </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-5 text-sm">
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Sessions</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.totalSessions}</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Sessions</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.totalSessions}</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Pitches</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.totalPitches}</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Total Pitches</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.totalPitches}</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Strike %</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.avgStrikePercentage}%</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Avg Strike %</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.avgStrikePercentage}%</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Best Strike %</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.bestStrikePercentage}%</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Best Strike %</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.bestStrikePercentage}%</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Session</p>
-                    <p className="text-sm font-semibold text-foreground">{lastSessionLabel}</p>
-                    <p className="text-xs text-muted-foreground">{lastSessionDetail}</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Last Session</p>
+                    <p className="text-base font-semibold text-foreground mt-1">{lastSessionLabel}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{lastSessionDetail}</p>
                 </div>
                 {stats.avgVelocity !== null && (
                     <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Velo</p>
-                        <p className="text-xl font-semibold text-foreground">{stats.avgVelocity} mph</p>
+                        <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Avg Velo</p>
+                        <p className="text-2xl font-bold text-foreground mt-1">{stats.avgVelocity} mph</p>
                     </div>
                 )}
             </div>
             <div>
-                <h3 className="text-lg font-semibold text-foreground mb-3">Recent Pitching Sessions</h3>
+                <h3 className="text-lg font-bold text-foreground mb-3">Recent Pitching Sessions</h3>
                 {recentSessions.length > 0 ? (
                     <ul className="divide-y divide-border">
                         {recentSessions.map((session) => {
@@ -1587,19 +747,19 @@ const PitchingOverviewCard: React.FC<{ stats: PitchingStatsSummary; sessions: Se
                             return (
                                 <li key={session.id} className="py-3 flex items-center justify-between text-sm">
                                     <div>
-                                        <p className="font-semibold text-card-foreground">{formatDate(session.date)}</p>
-                                        <p className="text-xs text-muted-foreground">{summary.total} pitches • {summary.strikePct}% strike rate</p>
+                                        <p className="font-semibold text-foreground">{formatDate(session.date)}</p>
+                                        <p className="text-sm text-muted-foreground mt-0.5">{summary.total} pitches • {summary.strikePct}% strike rate</p>
                                     </div>
-                                    <div className="text-right text-xs text-muted-foreground">
-                                        <p><span className="text-foreground font-semibold">{summary.strikes}</span> strikes</p>
-                                        <p><span className="text-foreground font-semibold">{summary.balls}</span> balls</p>
+                                    <div className="text-right text-sm text-muted-foreground">
+                                        <p><span className="text-foreground font-bold">{summary.strikes}</span> strikes</p>
+                                        <p><span className="text-foreground font-bold">{summary.balls}</span> balls</p>
                                     </div>
                                 </li>
                             );
                         })}
                     </ul>
                 ) : (
-                    <p className="text-sm text-muted-foreground">Log your first pitching session to unlock bullpen insights.</p>
+                    <p className="text-base text-muted-foreground">Log your first pitching session to unlock bullpen insights.</p>
                 )}
             </div>
         </div>
@@ -1864,358 +1024,7 @@ const LogSession: React.FC<{
     );
 };
 
-const SessionHistory: React.FC<{
-    sessions: Session[];
-    pitchSessions: PitchSession[];
-    drills: Drill[];
-    onSelectSession: (session: Session | PitchSession) => void;
-    onEditSession?: (session: Session) => void;
-    loading?: boolean;
-}> = ({ sessions, pitchSessions, drills, onSelectSession, onEditSession, loading = false }) => {
-    const [sessionFilter, setSessionFilter] = useState<'all' | 'batting' | 'pitching'>('all');
-    const [selectedPitchSession, setSelectedPitchSession] = useState<PitchSession | null>(null);
 
-    /**
-     * Calculate statistics for session history header tiles.
-     * 
-     * This function computes different metrics based on which tab is active:
-     * - All tab: Total sessions, Total batting reps, Total pitches thrown
-     * - Batting tab: Total batting sessions, Total batting reps, Avg Execution %
-     * - Pitching tab: Total pitching sessions, Overall strike %, Avg Accuracy %
-     * 
-     * To customize the metrics shown, modify the calculations below.
-     */
-    const stats = useMemo(() => {
-        // === ALL TAB METRICS ===
-        const totalSessions = sessions.length + pitchSessions.length;
-
-        // Filter for batting sessions (hitting type or no type for backward compatibility)
-        const battingSessions = sessions.filter(s => s.type === 'hitting' || !s.type);
-
-        // Total batting reps across all batting sessions
-        const battingReps = battingSessions
-            .reduce((sum, s) => sum + s.sets.reduce((reps, set) => reps + set.repsAttempted, 0), 0);
-
-        // Total pitches thrown across all pitching sessions
-        const pitchingPitches = pitchSessions.reduce((sum, ps) => sum + (ps.totalPitches || 0), 0);
-
-        // === BATTING TAB METRICS ===
-        const totalBattingSessions = battingSessions.length;
-
-        // Average execution percentage across all batting sessions
-        // Execution % = (total executed reps / total attempted reps) * 100
-        const totalBattingAttempted = battingSessions
-            .reduce((sum, s) => sum + s.sets.reduce((reps, set) => reps + set.repsAttempted, 0), 0);
-        const totalBattingExecuted = battingSessions
-            .reduce((sum, s) => sum + s.sets.reduce((exec, set) => exec + set.repsExecuted, 0), 0);
-        const avgBattingExecution = totalBattingAttempted > 0
-            ? Math.round((totalBattingExecuted / totalBattingAttempted) * 100)
-            : 0;
-
-        // === PITCHING TAB METRICS ===
-        const totalPitchingSessions = pitchSessions.length;
-
-        // Overall strike % = (total strikes across all sessions / total pitches) * 100
-        // We calculate strikes from the strike percentage in analytics
-        const totalStrikes = pitchSessions.reduce((sum, ps) => {
-            const strikePct = ps.analytics?.strikePct || 0;
-            const pitches = ps.totalPitches || 0;
-            return sum + Math.round((strikePct / 100) * pitches);
-        }, 0);
-        const overallStrikePercentage = pitchingPitches > 0
-            ? Math.round((totalStrikes / pitchingPitches) * 100)
-            : 0;
-
-        // Average accuracy/command across all pitching sessions
-        // We use the accuracy hit rate from analytics (% of pitches that hit intended zone)
-        const avgAccuracy = pitchSessions.length > 0
-            ? Math.round(
-                pitchSessions.reduce((sum, ps) => sum + (ps.analytics?.accuracyHitRate || 0), 0)
-                / pitchSessions.length
-            )
-            : 0;
-
-        return {
-            // All tab
-            totalSessions,
-            battingReps,
-            pitchingPitches,
-            // Batting tab
-            totalBattingSessions,
-            avgBattingExecution,
-            // Pitching tab
-            totalPitchingSessions,
-            overallStrikePercentage,
-            avgAccuracy,
-        };
-    }, [sessions, pitchSessions]);
-
-    // Create unified session list
-    const unifiedSessions = useMemo(() => {
-        const hitting = sessions.map(s => ({
-            ...s,
-            sessionType: 'hitting' as const,
-            date: s.date,
-            displayDate: s.date
-        }));
-
-        const pitching = pitchSessions
-            .map(ps => ({
-                id: ps.id,
-                sessionType: 'pitching' as const,
-                name: generatePitchSessionTitle(ps),
-                date: ps.sessionEndTime || ps.createdAt,
-                displayDate: ps.sessionEndTime || ps.createdAt,
-                totalPitches: ps.totalPitches || 0,
-                strikeRate: ps.analytics?.strikePct || 0,
-                pitchSession: ps
-            }));
-
-        return [...hitting, ...pitching].sort((a, b) =>
-            new Date(b.displayDate).getTime() - new Date(a.displayDate).getTime()
-        );
-    }, [sessions, pitchSessions]);
-
-    // Apply filter
-    const filteredSessions = useMemo(() => {
-        if (sessionFilter === 'batting') {
-            return sessions.filter(s => s.type === 'hitting' || !s.type);
-        } else if (sessionFilter === 'pitching') {
-            // Return pitching sessions converted to a display format
-            return unifiedSessions.filter(s => s.sessionType === 'pitching');
-        }
-        return unifiedSessions;
-    }, [sessions, sessionFilter, unifiedSessions]);
-
-    return (
-        <div className="space-y-4">
-            {/* Filter Buttons */}
-            <div className="flex flex-wrap items-center gap-3">
-                <span className="text-sm font-semibold text-muted-foreground">Filter:</span>
-                <div className="inline-flex rounded-lg border border-border overflow-hidden">
-                    {(['all', 'batting', 'pitching'] as const).map((filter) => (
-                        <Button
-                            key={filter}
-                            type="button"
-                            onClick={() => setSessionFilter(filter)}
-                            variant={sessionFilter === filter ? 'primary' : 'ghost'}
-                            size="sm"
-                        >
-                            {filter === 'all' ? 'All Sessions' : filter === 'batting' ? 'Batting' : 'Pitching'}
-                        </Button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Summary Statistics - Tab-specific header tiles */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {sessionFilter === 'all' && (
-                    <>
-                        {/* ALL TAB: Total Sessions, Batting Reps, Pitches Thrown */}
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Sessions</p>
-                            <p className="text-3xl font-bold text-foreground">{stats.totalSessions}</p>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Batting Reps</p>
-                            <p className="text-3xl font-bold text-primary">{stats.battingReps.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pitches Thrown</p>
-                            <p className="text-3xl font-bold text-accent">{(stats.pitchingPitches || 0).toLocaleString()}</p>
-                        </div>
-                    </>
-                )}
-
-                {sessionFilter === 'batting' && (
-                    <>
-                        {/* BATTING TAB: Total Batting Sessions, Total Reps, Avg Execution % */}
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Batting Sessions</p>
-                            <p className="text-3xl font-bold text-foreground">{stats.totalBattingSessions}</p>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Reps</p>
-                            <p className="text-3xl font-bold text-primary">{stats.battingReps.toLocaleString()}</p>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Avg Execution %</p>
-                            <p className="text-3xl font-bold text-primary">{stats.avgBattingExecution}%</p>
-                        </div>
-                    </>
-                )}
-
-                {sessionFilter === 'pitching' && (
-                    <>
-                        {/* PITCHING TAB: Total Pitching Sessions, Overall Strike %, Avg Accuracy % */}
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pitching Sessions</p>
-                            <p className="text-3xl font-bold text-foreground">{stats.totalPitchingSessions}</p>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Overall Strike %</p>
-                            <p className="text-3xl font-bold text-accent">{stats.overallStrikePercentage}%</p>
-                        </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Avg Accuracy %</p>
-                            <p className="text-3xl font-bold text-accent">{stats.avgAccuracy}%</p>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* Session List */}
-            <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                <ul className="divide-y divide-border">
-                    {loading ? (
-                        <ListSkeleton count={5} />
-                    ) : filteredSessions.length > 0 ? filteredSessions.map((session: any) => {
-                        const drill = drills.find(d => d.id === session.drillId);
-                        const goalRecords = drill && session.sets ? getSessionGoalProgress(session, drill) : {
-                            isSuccess: false,
-                            goalType: 'Progress',
-                            value: '-',
-                        };
-                        const progress = goalRecords;
-                        const goalType = drill ? drill.goalType : 'Progress';
-
-                        const editDescriptor = describeRelativeDay(session.updatedAt || session.createdAt);
-                        const hasReflection = Boolean(session.reflection && session.reflection.trim().length > 0);
-
-                        const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                onSelectSession(session);
-                            }
-                        };
-
-                        // Check if it's a pitching session
-                        if (session.sessionType === 'pitching') {
-                            const pitches = session.totalPitches || 0;
-                            const strikeRate = session.strikeRate || 0;
-
-                            return (
-                                <li key={session.id} className="bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow animate-fadeInUp">
-                                    <div
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => {
-                                            setSelectedPitchSession(session.pitchSession);
-                                        }}
-                                        onKeyDown={handleKeyDown}
-                                        className="w-full grid gap-4 p-4 items-center md:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr]"
-                                    >
-                                        <div>
-                                            <p className="font-semibold text-primary">{session.name}</p>
-                                            <p className="text-sm text-muted-foreground">
-                                                {(() => {
-                                                    // FIX: Handle date parsing more robustly
-                                                    const dateStr = session.displayDate;
-                                                    if (!dateStr) return 'N/A';
-                                                    const date = new Date(dateStr);
-                                                    if (isNaN(date.getTime())) return 'Invalid Date';
-                                                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                                                })()}
-                                            </p>
-                                            <p className="text-xs text-accent mt-1 font-medium">⚾ Pitching Session</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-sm text-muted-foreground">Pitches</p>
-                                            <p className="font-bold text-lg text-foreground">{pitches}</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-sm text-muted-foreground">Strike %</p>
-                                            <p className="font-bold text-lg text-foreground">{strikeRate}%</p>
-                                        </div>
-                                        <div className="flex items-center justify-end gap-2 text-sm">
-                                            {/* Notes indicator */}
-                                            {(() => {
-                                                // Check if pitch session has notes (field may be undefined)
-                                                const hasNotes = session.pitchSession?.notes && session.pitchSession.notes.trim().length > 0;
-                                                return (
-                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${hasNotes ? 'bg-secondary/15 text-secondary' : 'text-muted-foreground'} text-xs`}>
-                                                        <NoteIcon filled={hasNotes} className={hasNotes ? 'text-secondary' : 'text-muted-foreground'} />
-                                                        {hasNotes ? 'Notes added' : 'No notes'}
-                                                    </span>
-                                                );
-                                            })()}
-                                            <span className="text-muted-foreground text-xs">View Details →</span>
-                                        </div>
-                                    </div>
-                                </li>
-                            );
-                        }
-
-                        // Hitting session rendering
-                        return (
-                            <li key={session.id} className="bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow animate-fadeInUp">
-                                <div
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => onSelectSession(session)}
-                                    onKeyDown={handleKeyDown}
-                                    className="w-full grid gap-4 p-4 items-center md:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr]"
-                                >
-                                    <div>
-                                        <p className="font-semibold text-primary">{session.name}</p>
-                                        <p className="text-sm text-muted-foreground">{formatDate(session.date)}</p>
-                                        {editDescriptor && (
-                                            <p className="text-xs text-muted-foreground mt-1">Edited {editDescriptor}</p>
-                                        )}
-                                        {hasReflection && (
-                                            <p className="text-xs text-muted-foreground mt-2 italic">"{session.reflection}"</p>
-                                        )}
-                                    </div>
-                                    {/* Total Reps for this session */}
-                                    <div className="text-center">
-                                        <p className="text-sm text-muted-foreground">Total Reps</p>
-                                        <p className="font-bold text-lg text-foreground">
-                                            {session.sets ? session.sets.reduce((sum, set) => sum + set.repsAttempted, 0) : 0}
-                                        </p>
-                                    </div>
-                                    {/* Execution % */}
-                                    <div className="text-center">
-                                        <p className="text-sm text-muted-foreground">Exec %</p>
-                                        <p className="font-bold text-lg text-primary">{session.sets ? calculateExecutionPercentage(session.sets) : 0}%</p>
-                                    </div>
-                                    <div className="flex items-center justify-end gap-2 text-sm">
-                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${hasReflection ? 'bg-secondary/15 text-secondary' : 'text-muted-foreground'}`}>
-                                            <NoteIcon filled={hasReflection} className={hasReflection ? 'text-secondary' : 'text-muted-foreground'} />
-                                            {hasReflection ? 'Reflection' : 'No notes'}
-                                        </span>
-                                        {onEditSession && (
-                                            <Button
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    onEditSession(session);
-                                                }}
-                                                variant="secondary"
-                                                size="sm"
-                                            >
-                                                Edit
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
-                            </li>
-                        );
-                    }) : (
-                        <NoHistoryEmpty onLogSession={() => { }} />
-                    )}
-                </ul>
-            </div>
-
-            {/* Pitch Session Detail Modal */}
-            {selectedPitchSession && (
-                <PitchSessionDetailModal
-                    session={selectedPitchSession}
-                    onClose={() => setSelectedPitchSession(null)}
-                />
-            )}
-        </div>
-    );
-};
 
 const SessionEditForm: React.FC<{
     session: Session;
@@ -2449,10 +1258,10 @@ const SessionEditForm: React.FC<{
 };
 
 const KPICard: React.FC<{ title: string; value: string; description: string; }> = ({ title, value, description }) => (
-    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <p className="mt-1 text-3xl font-semibold text-foreground">{value}</p>
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
+    <div className="bg-card border border-border p-5 rounded-lg shadow-sm">
+        <p className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">{title}</p>
+        <p className="mt-1.5 text-4xl font-bold text-foreground">{value}</p>
+        <p className="text-sm text-muted-foreground mt-1.5">{description}</p>
     </div>
 );
 
@@ -2529,6 +1338,9 @@ export const PlayerView: React.FC = () => {
         getAllPitchSessionsForPlayer,
         getAssignedSimulations,
         startSimulationRun,
+        createGoal,
+        deleteGoal,
+        updateGoal,
     } = useContext(DataContext)!;
 
     const [drillToLog, setDrillToLog] = useState<Drill | null>(null);
@@ -2556,6 +1368,19 @@ export const PlayerView: React.FC = () => {
     const [isJoiningTeam, setIsJoiningTeam] = useState(false);
     const [hasSkippedTeamJoin, setHasSkippedTeamJoin] = useState(false);
     const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+    const [isSessionTypeSheetOpen, setIsSessionTypeSheetOpen] = useState(false);
+
+    // Goal Management State
+    const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+    const [goalFormError, setGoalFormError] = useState<string | null>(null);
+    const [goalContext, setGoalContext] = useState<'hitting' | 'pitching' | 'all'>('all');
+    const [goalListError, setGoalListError] = useState<string | null>(null);
+    const [isSavingGoal, setIsSavingGoal] = useState(false);
+    const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+    const [goalReflection, setGoalReflection] = useState('');
+    const [isSavingReflection, setIsSavingReflection] = useState(false);
+    const [goalDetailError, setGoalDetailError] = useState<string | null>(null);
+    const [selectedPitchSession, setSelectedPitchSession] = useState<PitchSession | null>(null);
 
     useEffect(() => {
         if (player.teamIds.length === 0) {
@@ -2695,6 +1520,78 @@ export const PlayerView: React.FC = () => {
     // Use getAllPitchSessionsForPlayer for real pitching data
 
 
+    const selectedGoal = useMemo(() => goals.find(g => g.id === selectedGoalId) ?? null, [goals, selectedGoalId]);
+
+    useEffect(() => {
+        if (selectedGoal) {
+            setGoalReflection(selectedGoal.reflection ?? '');
+        } else {
+            setGoalReflection('');
+        }
+    }, [selectedGoal]);
+
+    const handleOpenGoalDetail = (goal: PersonalGoal) => {
+        setSelectedGoalId(goal.id);
+        setGoalDetailError(null);
+    };
+
+    const handleCloseGoalDetail = () => {
+        if (isSavingReflection) return;
+        setSelectedGoalId(null);
+        setGoalDetailError(null);
+    };
+
+    const handleSaveGoalReflection = async () => {
+        if (!selectedGoal) return;
+        setGoalDetailError(null);
+        setIsSavingReflection(true);
+        try {
+            const trimmedReflection = goalReflection.trim();
+            await updateGoal(selectedGoal.id, { reflection: trimmedReflection });
+            setGoalReflection(trimmedReflection);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to save reflection. Please try again.';
+            setGoalDetailError(message);
+        } finally {
+            setIsSavingReflection(false);
+        }
+    };
+
+    const handleCreateGoal = async (goalData: Omit<PersonalGoal, 'id' | 'playerId' | 'status' | 'startDate' | 'teamId'>) => {
+        if (!selectedTeamId) {
+            setGoalFormError('Join a team before setting goals.');
+            return;
+        }
+
+        setGoalFormError(null);
+        setIsSavingGoal(true);
+        try {
+            await createGoal({
+                ...goalData,
+                playerId: player.id,
+                teamId: selectedTeamId,
+                status: 'Active',
+                startDate: new Date().toISOString()
+            });
+            setIsGoalModalOpen(false);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to save this goal. Please try again.';
+            setGoalFormError(message);
+        } finally {
+            setIsSavingGoal(false);
+        }
+    };
+
+    const handleDeleteGoal = async (goalId: string) => {
+        setGoalListError(null);
+        try {
+            await deleteGoal(goalId);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unable to delete this goal. Please try again.';
+            setGoalListError(message);
+        }
+    };
+
     const handleStartAssignedSession = (drill: Drill) => {
         setLogSessionError(null);
         setLogMode('hitting');
@@ -2707,6 +1604,24 @@ export const PlayerView: React.FC = () => {
         setLogMode('hitting');
         setDrillToLog(null);
         setCurrentView('log_session');
+    };
+
+    const handleFABClick = () => {
+        setIsSessionTypeSheetOpen(true);
+    };
+
+    const handleStartHittingFromSheet = () => {
+        setLogSessionError(null);
+        setLogMode('hitting');
+        setDrillToLog(null);
+        setCurrentView('log_session');
+    };
+
+    const handleStartPitchingFromSheet = () => {
+        setLogSessionError(null);
+        setLogMode('pitching');
+        setDrillToLog(null);
+        setCurrentView('pitching_session_flow');
     };
 
     const handleCancelLogSession = () => {
@@ -2858,11 +1773,9 @@ export const PlayerView: React.FC = () => {
     };
 
     const navItems = [
-        { name: 'Home', icon: <HomeIcon />, view: 'dashboard' },
-        { name: 'History', icon: <ClipboardListIcon />, view: 'history' },
-        { name: 'Log Session', icon: <PlusIcon />, view: 'log_session' },
-        { name: 'Analytics', icon: <ChartBarIcon />, view: 'analytics' },
-        { name: 'Profile', icon: <ProfileIcon />, view: 'profile' },
+        { name: 'Dashboard', icon: '🏠', view: 'dashboard' },
+        { name: 'Hitting', icon: <BaseballIcon />, view: 'hitting' },
+        { name: 'Pitching', icon: <TargetIcon />, view: 'pitching' },
     ];
 
     const pageTitles: { [key: string]: string } = {
@@ -2986,121 +1899,122 @@ export const PlayerView: React.FC = () => {
         switch (currentView) {
             case 'dashboard':
                 return (
-                    <div className="space-y-6">
-                        {/* Pitching Rest Status Card */}
-                        <PitchRestCard playerId={player.id} />
-
-                        {/* Main Dashboard Content */}
-                        <PlayerDashboard
-                            player={player}
-                            assignedDrills={assignedDrills}
-                            recentSessions={sessions}
-                            drills={allTeamDrills}
-                            goals={goals}
-                            teamGoals={teamGoals}
-                            teamSessions={teamSessions}
-                            onStartAssignedSession={handleStartAssignedSession}
-                            activeTeamId={selectedTeamId}
-                            loading={loading}
-                            pitchSessions={pitchSessions}
-                            assignedSimulations={assignedSimulations}
-                            onStartSimulation={(program) => setSelectedProgram(program)}
-                        />
-                        {/* REMOVED: PitchingOverviewCard - Use new Bullpen/PitchTracker UI for pitching sessions */}
-                    </div>
+                    <PlayerDashboardTab
+                        player={player}
+                        sessions={sessions}
+                        pitchSessions={pitchSessions}
+                        goals={goals}
+                        assignedDrills={assignedDrills}
+                        assignedSimulations={assignedSimulations}
+                        onStartHitting={() => {
+                            setLogMode('hitting');
+                            setCurrentView('log_session');
+                        }}
+                        onStartPitching={() => {
+                            setLogMode('pitching');
+                            setCurrentView('pitching_session_flow');
+                        }}
+                        onViewProfile={() => setCurrentView('profile')}
+                        onStartProgram={(program) => handleStartSimulation(program)}
+                        onStartDrill={(drill) => {
+                            setDrillToLog(drill);
+                            setLogMode('hitting');
+                            setCurrentView('log_session');
+                        }}
+                    />
+                );
+            case 'hitting':
+                return (
+                    <HittingTab
+                        player={player}
+                        sessions={sessions}
+                        goals={goals}
+                        drills={allTeamDrills}
+                        onLogSession={() => {
+                            setLogMode('hitting');
+                            setCurrentView('log_session');
+                        }}
+                        onSelectSession={handleOpenSessionDetail}
+                        onEditSession={handleOpenSessionEditor}
+                        onDeleteGoal={handleDeleteGoal}
+                        onAddGoal={() => {
+                            setGoalFormError(null);
+                            setGoalContext('hitting');
+                            setIsGoalModalOpen(true);
+                        }}
+                        onSelectGoal={handleOpenGoalDetail}
+                    />
+                );
+            case 'pitching':
+                return (
+                    <PitchingTab
+                        player={player}
+                        pitchSessions={pitchSessions}
+                        goals={goals}
+                        onLogSession={() => {
+                            setLogMode('pitching');
+                            setCurrentView('pitching_session_flow');
+                        }}
+                        onSelectSession={setSelectedPitchSession}
+                        onDeleteGoal={handleDeleteGoal}
+                        onAddGoal={() => {
+                            setGoalFormError(null);
+                            setGoalContext('pitching');
+                            setIsGoalModalOpen(true);
+                        }}
+                        onSelectGoal={handleOpenGoalDetail}
+                    />
                 );
             case 'log_session':
                 return (
-                    <div className="space-y-6">
-                        <div className="inline-flex rounded-full border border-border overflow-hidden">
-                            {(['hitting', 'pitching'] as const).map((mode) => (
-                                <Button
-                                    key={mode}
-                                    type="button"
-                                    onClick={() => {
-                                        setLogSessionError(null);
-                                        setLogMode(mode);
-                                        if (mode === 'pitching') {
-                                            setDrillToLog(null);
-                                        }
-                                    }}
-                                    variant={logMode === mode ? 'primary' : 'ghost'}
-                                >
-                                    {mode === 'hitting' ? 'Hitting Session' : 'Pitching Session'}
-                                </Button>
-                            ))}
-                        </div>
-                        {logMode === 'hitting' ? (
-                            <LogSession
-                                assignedDrill={drillToLog}
-                                onSave={handleLogHittingSession}
-                                onCancel={handleCancelLogSession}
-                                isLoading={isSavingSession}
-                                errorMessage={logSessionError}
-                            />
-                        ) : logMode === 'pitching' ? (
-                            <PitchingSessionFlow
-                                player={player}
-                                selectedTeamId={selectedTeamId}
-                                activePitchSessionId={activePitchSessionId}
-                                setActivePitchSessionId={setActivePitchSessionId}
-                                onCancel={handleCancelLogSession}
-                                createPitchSession={createPitchSession}
-                                activeSimulationRunId={activeSimulationRunId}
-                            />
-                        ) : (
-                            <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-8">
-                                <div className="text-center space-y-2">
-                                    <h2 className="text-2xl font-bold text-foreground">Start a Session</h2>
-                                    <p className="text-muted-foreground">What are you working on today?</p>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-lg px-4">
-                                    <button
-                                        onClick={() => setLogMode('hitting')}
-                                        className="flex flex-col items-center justify-center p-8 space-y-4 bg-card border-2 border-border hover:border-primary hover:bg-accent/50 rounded-xl transition-all group"
-                                    >
-                                        <div className="p-4 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors">
-                                            <span className="text-4xl">⚾️</span>
-                                        </div>
-                                        <div className="text-center">
-                                            <h3 className="text-lg font-bold text-foreground">Hitting</h3>
-                                            <p className="text-sm text-muted-foreground">Log swings & drills</p>
-                                        </div>
-                                    </button>
-                                    <button
-                                        onClick={() => setLogMode('pitching')}
-                                        className="flex flex-col items-center justify-center p-8 space-y-4 bg-card border-2 border-border hover:border-primary hover:bg-accent/50 rounded-xl transition-all group"
-                                    >
-                                        <div className="p-4 rounded-full bg-secondary/10 group-hover:bg-secondary/20 transition-colors">
-                                            <span className="text-4xl">🎯</span>
-                                        </div>
-                                        <div className="text-center">
-                                            <h3 className="text-lg font-bold text-foreground">Pitching</h3>
-                                            <p className="text-sm text-muted-foreground">Track bullpen sessions</p>
-                                        </div>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            case 'history':
-                return (
-                    <SessionHistory
-                        sessions={sessions}
-                        pitchSessions={pitchSessions}
-                        drills={allTeamDrills}
-                        onSelectSession={handleOpenSessionDetail}
-                        onEditSession={handleOpenSessionEditor}
-                        loading={loading}
+                    <LogSession
+                        assignedDrill={drillToLog}
+                        onSave={handleLogHittingSession}
+                        onCancel={handleCancelLogSession}
+                        isLoading={isSavingSession}
+                        errorMessage={logSessionError}
                     />
                 );
-            case 'analytics':
-                return <PlayerAnalyticsTab sessions={sessions} pitchSessions={pitchSessions} player={player} drills={allTeamDrills} />;
+            case 'pitching_session_flow':
+                return (
+                    <PitchingSessionFlow
+                        player={player}
+                        selectedTeamId={selectedTeamId}
+                        activePitchSessionId={activePitchSessionId}
+                        setActivePitchSessionId={setActivePitchSessionId}
+                        onCancel={handleCancelLogSession}
+                        createPitchSession={createPitchSession}
+                        activeSimulationRunId={activeSimulationRunId}
+                    />
+                );
             case 'profile':
-                return <ProfileTab />;
+                return <ProfileTab onBack={() => setCurrentView('dashboard')} />;
             default:
-                return null;
+                return (
+                    <PlayerDashboardTab
+                        player={player}
+                        sessions={sessions}
+                        pitchSessions={pitchSessions}
+                        goals={goals}
+                        assignedDrills={assignedDrills}
+                        assignedSimulations={assignedSimulations}
+                        onStartHitting={() => {
+                            setLogMode('hitting');
+                            setCurrentView('log_session');
+                        }}
+                        onStartPitching={() => {
+                            setLogMode('pitching');
+                            setCurrentView('pitching_session_flow');
+                        }}
+                        onViewProfile={() => setCurrentView('profile')}
+                        onStartProgram={(program) => handleStartSimulation(program)}
+                        onStartDrill={(drill) => {
+                            setDrillToLog(drill);
+                            setLogMode('hitting');
+                            setCurrentView('log_session');
+                        }}
+                    />
+                );
         }
     };
 
@@ -3221,6 +2135,63 @@ export const PlayerView: React.FC = () => {
                     isOpen={!!selectedProgram}
                     onClose={() => setSelectedProgram(null)}
                     onStart={() => handleStartSimulation(selectedProgram)}
+                />
+            )}
+
+            {/* Floating Action Button - Only show on main player tabs */}
+            {['dashboard', 'hitting', 'pitching', 'profile'].includes(currentView) && (
+                <FloatingActionButton onClick={handleFABClick} />
+            )}
+
+            {/* Session Type Bottom Sheet */}
+            <SessionTypeBottomSheet
+                isOpen={isSessionTypeSheetOpen}
+                onClose={() => setIsSessionTypeSheetOpen(false)}
+                onSelectHitting={handleStartHittingFromSheet}
+                onSelectPitching={handleStartPitchingFromSheet}
+            />
+
+            <Modal
+                isOpen={Boolean(selectedGoal)}
+                onClose={handleCloseGoalDetail}
+                title={selectedGoal ? formatGoalName(selectedGoal) : 'Goal Details'}
+            >
+                {selectedGoal && (
+                    <GoalDetail
+                        goal={selectedGoal}
+                        sessions={sessions}
+                        pitchSessions={pitchSessions}
+                        drills={allTeamDrills}
+                        reflection={goalReflection}
+                        onReflectionChange={setGoalReflection}
+                        onSaveReflection={handleSaveGoalReflection}
+                        isSavingReflection={isSavingReflection}
+                        errorMessage={goalDetailError}
+                    />
+                )}
+            </Modal>
+
+            <Modal
+                isOpen={isGoalModalOpen}
+                onClose={() => {
+                    if (isSavingGoal) return;
+                    setGoalFormError(null);
+                    setIsGoalModalOpen(false);
+                }}
+                title="Set a New Goal"
+            >
+                <GoalForm
+                    onSave={handleCreateGoal}
+                    isSaving={isSavingGoal}
+                    errorMessage={goalFormError}
+                    context={goalContext}
+                />
+            </Modal>
+
+            {selectedPitchSession && (
+                <PitchSessionDetailModal
+                    session={selectedPitchSession}
+                    onClose={() => setSelectedPitchSession(null)}
                 />
             )}
         </>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ConsistencyData } from '../utils/teamInsights';
+import { getTierDisplayInfo } from '../utils/engagementHelpers';
 
 interface TeamConsistencyTrackerProps {
     data: ConsistencyData;
@@ -65,28 +66,42 @@ export const TeamConsistencyTracker: React.FC<TeamConsistencyTrackerProps> = ({ 
                         Inactive Players (7+ Days)
                     </h4>
                     <div className="space-y-2">
-                        {data.inactivePlayers.slice(0, 5).map(player => (
-                            <div
-                                key={player.playerId}
-                                className="flex items-center justify-between bg-muted/20 rounded-lg px-3 py-2"
-                            >
-                                <span className="text-sm font-medium text-foreground">
-                                    {player.name}
-                                </span>
-                                <div className="text-right">
-                                    <p className="text-xs font-semibold text-muted-foreground">
-                                        {player.daysAgo === 999
-                                            ? 'Never logged'
-                                            : `${player.daysAgo} days ago`}
-                                    </p>
-                                    {player.lastActive !== 'Never' && (
-                                        <p className="text-[10px] text-muted-foreground">
-                                            Last: {player.lastActive}
+                        {data.inactivePlayers.slice(0, 5).map(player => {
+                            // Determine tier based on days inactive
+                            // Note: data.inactivePlayers already filtered for >7 days in getConsistencyData
+                            const tier = player.daysAgo === 999 ? 'never-recorded' : 'inactive';
+                            const tierInfo = getTierDisplayInfo(tier);
+
+                            return (
+                                <div
+                                    key={player.playerId}
+                                    className="flex items-center justify-between rounded-lg px-3 py-2 border"
+                                    style={{
+                                        backgroundColor: tierInfo.bgColor,
+                                        borderColor: tierInfo.borderColor
+                                    }}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-lg">{tierInfo.icon}</span>
+                                        <span className="text-sm font-medium text-foreground">
+                                            {player.name}
+                                        </span>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs font-semibold text-muted-foreground">
+                                            {player.daysAgo === 999
+                                                ? 'Never logged'
+                                                : `${player.daysAgo} days ago`}
                                         </p>
-                                    )}
+                                        {player.lastActive !== 'Never' && (
+                                            <p className="text-[10px] text-muted-foreground">
+                                                Last: {player.lastActive}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}

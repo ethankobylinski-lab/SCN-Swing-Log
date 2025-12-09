@@ -79,7 +79,10 @@ export interface SessionFeedback {
   coachId: string;
   reaction?: string; // e.g., 'thumbs_up', 'fire'
   note?: string;
-  createdAt?: string;
+  seasonYear: string;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
+  createdAt: string;
   updatedAt?: string;
 }
 
@@ -104,7 +107,7 @@ export type TargetZone = 'Inside High' | 'Inside Middle' | 'Inside Low' | 'Middl
 export type PitchType = 'Fastball' | 'Curveball' | 'Slider' | 'Changeup' | 'Sinker';
 export type CountSituation = 'Ahead' | 'Even' | 'Behind';
 export type BaseRunner = '1B' | '2B' | '3B';
-export type GoalType = 'Execution %' | 'Hard Hit %' | 'No Strikeouts' | 'Total Reps' | 'Strike %' | 'Velocity' | 'Command';
+export type GoalType = 'Execution %' | 'Hard Hit %' | 'No Strikeouts' | 'Total Reps' | 'Strike %' | 'Velocity' | 'Command' | 'Total Pitches';
 export type DrillType = 'Tee Work' | 'Soft Toss' | 'Front Toss' | 'Throwing' | 'Live BP' | 'Machine';
 
 export interface Drill {

@@ -2,7 +2,8 @@ import React, { useState, useContext, useMemo, useEffect, useRef } from 'react';
 import { DataContext, PitchingStatsSummary } from '../contexts/DataContext';
 import { Dashboard } from './Dashboard';
 import { ProfileTab } from './ProfileTab';
-import { GoalForm, GoalFormValues, GoalProgress } from './PlayerView';
+import { GoalForm, GoalFormValues } from './GoalForm';
+import { GoalProgress } from './GoalProgress';
 import { ProfileIcon } from './icons/ProfileIcon';
 import { HomeIcon } from './icons/HomeIcon';
 import { UsersIcon } from './icons/UsersIcon';
@@ -87,12 +88,12 @@ const PlayerLeaderboard: React.FC<{ players: TopPlayer[], metricSuffix?: string 
         return <p className="text-muted-foreground">Not enough data for top performers.</p>;
     }
     return (
-        <div className="space-y-1 text-left">
-            <h4 className="font-bold text-sm text-secondary">Top Performers</h4>
+        <div className="space-y-1.5 text-left">
+            <h4 className="font-bold text-sm text-secondary mb-2">Top Performers</h4>
             {players.map((p, index) => (
-                <div key={p.name} className="flex justify-between items-center text-xs">
-                    <span className="truncate pr-2">{index + 1}. {p.name}</span>
-                    <span className="font-bold flex-shrink-0">{p.value}{metricSuffix}</span>
+                <div key={p.name} className="flex justify-between items-center text-sm">
+                    <span className="truncate pr-2 text-foreground">{index + 1}. {p.name}</span>
+                    <span className="font-bold flex-shrink-0 text-secondary">{p.value}{metricSuffix}</span>
                 </div>
             ))}
         </div>
@@ -286,43 +287,43 @@ const TeamPitchingOverview: React.FC<{ stats: PitchingStatsSummary }> = ({ stats
     const lastSessionDetail = stats.lastSessionDate ? `${stats.recentStrikePercentage}% strike rate` : 'Encourage pitchers to log their bullpen.';
 
     return (
-        <div className="bg-card border border-border rounded-xl shadow-sm p-6 space-y-4">
+        <div className="bg-card border border-border rounded-xl shadow-sm p-7 space-y-5">
             <div className="flex items-center justify-between gap-4">
                 <div>
-                    <h3 className="text-lg font-semibold text-foreground">Team Pitching Overview</h3>
-                    <p className="text-sm text-muted-foreground">Bullpen volume and strike efficiency.</p>
+                    <h3 className="text-xl font-bold text-foreground">Team Pitching Overview</h3>
+                    <p className="text-sm text-foreground/60 mt-0.5">Bullpen volume and strike efficiency.</p>
                 </div>
                 <div className="text-right">
-                    <p className="text-3xl font-bold text-primary">{stats.overallStrikePercentage}%</p>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Team Strike %</p>
+                    <p className="text-4xl font-bold text-primary">{stats.overallStrikePercentage}%</p>
+                    <p className="text-xs text-foreground/70 uppercase tracking-wide font-semibold">Team Strike %</p>
                 </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-5 text-sm sm:grid-cols-3">
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Sessions</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.totalSessions}</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Sessions</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.totalSessions}</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Pitches</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.totalPitches}</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Total Pitches</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.totalPitches}</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Strike %</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.avgStrikePercentage}%</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Avg Strike %</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.avgStrikePercentage}%</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Best Strike %</p>
-                    <p className="text-xl font-semibold text-foreground">{stats.bestStrikePercentage}%</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Best Strike %</p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{stats.bestStrikePercentage}%</p>
                 </div>
                 <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Last Session</p>
-                    <p className="text-sm font-semibold text-foreground">{lastSessionLabel}</p>
-                    <p className="text-xs text-muted-foreground">{lastSessionDetail}</p>
+                    <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Last Session</p>
+                    <p className="text-base font-semibold text-foreground mt-1">{lastSessionLabel}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{lastSessionDetail}</p>
                 </div>
                 {stats.avgVelocity !== null && (
                     <div>
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Avg Velo</p>
-                        <p className="text-xl font-semibold text-foreground">{stats.avgVelocity} mph</p>
+                        <p className="text-xs text-foreground/60 uppercase tracking-wide font-medium">Avg Velo</p>
+                        <p className="text-2xl font-bold text-foreground mt-1">{stats.avgVelocity} mph</p>
                     </div>
                 )}
             </div>
@@ -773,9 +774,9 @@ const CoachDashboard: React.FC<{
     );
 
     const StatCard: React.FC<{ title: string; value: string; subValue?: string }> = ({ title, value, subValue }) => (
-        <div className="bg-card border border-border p-6 rounded-lg shadow-sm text-center">
-            <h3 className="text-sm font-semibold text-muted-foreground">{title}</h3>
-            <p className="text-4xl font-bold text-foreground mt-1">{value} {subValue && <span className="text-xl text-muted-foreground">/ {subValue}</span>}</p>
+        <div className="bg-card border border-border p-7 rounded-lg shadow-sm text-center">
+            <h3 className="text-sm font-semibold text-foreground/70 uppercase tracking-wide">{title}</h3>
+            <p className="text-5xl font-bold text-foreground mt-2">{value} {subValue && <span className="text-2xl font-semibold text-muted-foreground">/ {subValue}</span>}</p>
         </div>
     );
 
@@ -3100,9 +3101,9 @@ export const CoachView: React.FC = () => {
                         <TeamInsightsTab
                             players={players}
                             sessions={sessions}
+                            pitchSessions={teamPitchingSessions}
                             drills={drills}
                             teamGoals={teamGoals}
-                            teamId={activeTeam?.id || ''}
                         />
                     )
                 }

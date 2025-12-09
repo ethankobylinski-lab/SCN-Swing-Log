@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { DataContext } from '../../contexts/DataContext';
 import { PitchRecord, PitchTypeModel, ZoneId, PitchOutcome, PitchSessionAnalytics, PitchType, PitchSimulationRun, PitchSimulationStep, SimulationStepWithDetails } from '../../types';
 import { StrikeZoneClean, PitchLocation } from '../StrikeZoneClean';
+import { BatterIcon } from '../icons/BatterIcon';
 import { BatterCountRow } from './BatterCountRow';
 import { GameSituationPanel } from './GameSituationPanel';
 import { PitchTypeSelector } from './PitchTypeSelector';
@@ -517,31 +518,54 @@ export const PitchTracker: React.FC<PitchTrackerProps> = ({ sessionId, onNavigat
                     </button>
                 </div>
 
-                <div className="text-center mb-2 text-sm text-muted-foreground">
+
+
+                <div className="text-center mb-4 text-sm text-muted-foreground bg-muted/30 py-2 rounded-lg border border-border/50">
                     {mode === 'selectIntent' ? (
-                        <span>Tap strike zone to <strong className="text-yellow-500">set target</strong></span>
+                        <span>Tap strike zone to <strong className="text-yellow-500 font-bold">set target</strong></span>
                     ) : (
-                        <span>Tap strike zone to <strong className="text-green-600">record actual location</strong></span>
+                        <span>Tap strike zone to <strong className="text-green-600 font-bold">record actual location</strong></span>
                     )}
                 </div>
-                <StrikeZoneClean
-                    mode={mode}
-                    pitchType={getPitchTypeName(selectedPitchTypeId, pitchTypes)}
-                    pitchTypeColor={getPitchTypeColorHex(selectedPitchTypeId, pitchTypes)}
-                    batterSide={batterSide}
-                    pitcherHand={pitcherHand}
-                    intendedZone={mode === 'selectIntent' ? null : targetZone}
-                    isCalledStrike={false}
-                    pitchHistory={pitchHistory.map(p => ({
-                        id: p.id,
-                        x: p.actualXNorm || 0.5,
-                        y: p.actualYNorm || 0.5,
-                        color: getPitchTypeColorHex(p.pitchTypeId, pitchTypes) || '#6B7280',
-                        isCalledStrike: p.outcome === 'called_strike'
-                    }))}
-                    onSelectIntent={handleSelectIntent}
-                    onSelectActual={handleSelectActual}
-                />
+
+                <div className="flex justify-center items-start gap-12 relative min-h-[350px] pt-8">
+                    {/* Right-Handed Batter (Stands on LEFT side of plate in Catcher View) */}
+                    <div className={`absolute left-0 top-10 transition-all duration-500 ${batterSide === 'R' ? 'opacity-100 translate-x-4' : 'opacity-0 -translate-x-8'}`}>
+                        <div className="flex flex-col items-center gap-2">
+                            <BatterIcon side="R" className="w-24 h-24 text-foreground/80 drop-shadow-lg" />
+                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Righty</span>
+                        </div>
+                    </div>
+
+                    <div className="relative z-10 shadow-2xl rounded-lg bg-card/80 backdrop-blur-md border border-white/10 p-1">
+                        <StrikeZoneClean
+                            mode={mode}
+                            pitchType={getPitchTypeName(selectedPitchTypeId, pitchTypes)}
+                            pitchTypeColor={getPitchTypeColorHex(selectedPitchTypeId, pitchTypes)}
+                            batterSide={batterSide}
+                            pitcherHand={pitcherHand}
+                            intendedZone={mode === 'selectIntent' ? null : targetZone}
+                            isCalledStrike={false}
+                            pitchHistory={pitchHistory.map(p => ({
+                                id: p.id,
+                                x: p.actualXNorm || 0.5,
+                                y: p.actualYNorm || 0.5,
+                                color: getPitchTypeColorHex(p.pitchTypeId, pitchTypes) || '#6B7280',
+                                isCalledStrike: p.outcome === 'called_strike'
+                            }))}
+                            onSelectIntent={handleSelectIntent}
+                            onSelectActual={handleSelectActual}
+                        />
+                    </div>
+
+                    {/* Left-Handed Batter (Stands on RIGHT side of plate in Catcher View) */}
+                    <div className={`absolute right-0 top-10 transition-all duration-500 ${batterSide === 'L' ? 'opacity-100 -translate-x-4' : 'opacity-0 translate-x-8'}`}>
+                        <div className="flex flex-col items-center gap-2">
+                            <BatterIcon side="L" className="w-24 h-24 text-foreground/80 drop-shadow-lg" />
+                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Lefty</span>
+                        </div>
+                    </div>
+                </div>
                 {saving && (
                     <div className="text-center mt-2 text-primary text-sm animate-pulse">
                         Saving pitch...

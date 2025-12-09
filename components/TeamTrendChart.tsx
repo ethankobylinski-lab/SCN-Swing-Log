@@ -1,5 +1,6 @@
 import React from 'react';
 import { WeeklyTrend } from '../utils/teamInsights';
+import { useTeamColor } from '../hooks/useTeamColor';
 
 interface TeamTrendChartProps {
   data: WeeklyTrend[];
@@ -9,6 +10,8 @@ interface TeamTrendChartProps {
 }
 
 export const TeamTrendChart: React.FC<TeamTrendChartProps> = ({ data, title, subtitle, headerRight }) => {
+  const { primaryColor, lightAccent } = useTeamColor();
+
   if (data.length === 0 || data.every(d => d.avgReps === 0)) {
     return (
       <div className="bg-card border border-border rounded-xl shadow-sm p-12 text-center">
@@ -38,7 +41,7 @@ export const TeamTrendChart: React.FC<TeamTrendChartProps> = ({ data, title, sub
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-muted/30 rounded-lg p-3 text-center">
           <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Latest Avg Reps</p>
-          <p className="text-2xl font-bold text-primary">{data[data.length - 1]?.avgReps || 0}</p>
+          <p className="text-2xl font-bold" style={{ color: primaryColor }}>{data[data.length - 1]?.avgReps || 0}</p>
         </div>
         <div className="bg-muted/30 rounded-lg p-3 text-center">
           <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Latest Execution</p>
@@ -65,7 +68,7 @@ export const TeamTrendChart: React.FC<TeamTrendChartProps> = ({ data, title, sub
         {/* Reps Trend */}
         <div>
           <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-primary" />
+            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: primaryColor }} />
             Average Reps per Session
           </h4>
           <div className="space-y-2">
@@ -78,11 +81,11 @@ export const TeamTrendChart: React.FC<TeamTrendChartProps> = ({ data, title, sub
                   </div>
                   <div className="flex-1 bg-muted/30 rounded-full h-6 relative overflow-hidden">
                     <div
-                      className="bg-primary h-full rounded-full transition-all duration-300 flex items-center justify-end pr-3"
-                      style={{ width: `${width}%` }}
+                      className="h-full rounded-full transition-all duration-300 flex items-center justify-end pr-3"
+                      style={{ width: `${width}%`, backgroundColor: primaryColor }}
                     >
                       {week.avgReps > 0 && (
-                        <span className="text-xs font-bold text-primary-foreground">
+                        <span className="text-xs font-bold text-white">
                           {week.avgReps}
                         </span>
                       )}

@@ -12,6 +12,9 @@ export const IntegrityAlerts: React.FC<IntegrityAlertsProps> = ({ alerts }) => {
             case 'identical-counts': return '🔁';
             case 'no-variation': return '📊';
             case 'too-fast': return '⚡';
+            case 'no-activity': return '😴';
+            case 'never-recorded': return '❓';
+            case 'declining-frequency': return '📉';
             default: return '⚠️';
         }
     };

@@ -80,66 +80,77 @@ export const SessionDetail: React.FC<SessionDetailProps> = ({
             {session.sets.map((set) => (
               <div
                 key={set.setNumber}
-                className="border border-border rounded-lg p-4 bg-muted/30 space-y-2"
+                className="border border-border/60 rounded-xl p-5 bg-card shadow-sm hover:shadow-md transition-shadow space-y-4 relative overflow-hidden"
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-primary">Set {set.setNumber}</p>
+                {/* Set Header */}
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-primary/10 text-primary font-bold px-3 py-1 rounded-md text-sm">
+                      Set {set.setNumber}
+                    </div>
+                    <span className="text-sm font-medium text-foreground">
+                      {set.drillLabel || set.drillType || 'General Drill'}
+                    </span>
+                  </div>
                   {typeof set.grade === 'number' && (
-                    <span className="text-xs font-semibold bg-secondary/20 text-secondary px-2 py-0.5 rounded-full">
-                      Grade {set.grade}
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${set.grade >= 8 ? 'bg-green-100 text-green-700' :
+                        set.grade >= 6 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                      }`}>
+                      Grade {set.grade}/10
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Reps</p>
-                    <p className="font-semibold">{set.repsAttempted}</p>
+
+                {/* Main Stats Row */}
+                <div className="grid grid-cols-4 gap-4 py-2">
+                  <div className="text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Reps</p>
+                    <p className="text-xl font-black text-foreground">{set.repsAttempted}</p>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Executed</p>
-                    <p className="font-semibold">{set.repsExecuted}</p>
+                  <div className="text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Executed</p>
+                    <p className="text-xl font-black text-primary">{set.repsExecuted}</p>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Hard Hits</p>
-                    <p className="font-semibold">{set.hardHits}</p>
+                  <div className="text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Hard Hits</p>
+                    <p className="text-xl font-black text-secondary">{set.hardHits}</p>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Strikeouts</p>
-                    <p className="font-semibold">{set.strikeouts}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Drill Focus</p>
-                    <p className="font-semibold">{set.drillLabel || set.drillType || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Count</p>
-                    <p className="font-semibold">{set.countSituation || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Outs</p>
-                    <p className="font-semibold">
-                      {typeof set.outs === 'number' ? set.outs : '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Base Runners</p>
-                    <p className="font-semibold">{formatList(set.baseRunners)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Target Zones</p>
-                    <p className="font-semibold">{formatList(set.targetZones)}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs uppercase tracking-wide">Pitch Types</p>
-                    <p className="font-semibold">{formatList(set.pitchTypes)}</p>
+                  <div className="text-center">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Strikeouts</p>
+                    <p className="text-xl font-black text-destructive">{set.strikeouts}</p>
                   </div>
                 </div>
+
+                {/* Context Details Grid */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm bg-muted/20 rounded-lg p-3 border border-border/30">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs font-medium">Count</span>
+                    <span className="font-semibold text-foreground">{set.countSituation || '—'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs font-medium">Outs</span>
+                    <span className="font-semibold text-foreground">{typeof set.outs === 'number' ? set.outs : '—'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs font-medium">Runners</span>
+                    <span className="font-semibold text-foreground">{formatList(set.baseRunners)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground text-xs font-medium">Pitch Types</span>
+                    <span className="font-semibold text-foreground truncate max-w-[120px] text-right" title={formatList(set.pitchTypes)}>{formatList(set.pitchTypes)}</span>
+                  </div>
+                  <div className="col-span-2 flex justify-between items-center pt-1 border-t border-border/20 mt-1">
+                    <span className="text-muted-foreground text-xs font-medium">Target Zones</span>
+                    <span className="font-semibold text-foreground">{formatList(set.targetZones)}</span>
+                  </div>
+                </div>
+
                 {set.notes && (
-                  <p className="text-sm text-muted-foreground border-t border-border pt-2">
-                    Notes: {set.notes}
-                  </p>
+                  <div className="bg-yellow-50/50 border border-yellow-100 rounded-lg p-3 text-sm">
+                    <p className="text-xs font-bold text-yellow-700 uppercase tracking-wide mb-1">Notes</p>
+                    <p className="text-foreground/80 italic">{set.notes}</p>
+                  </div>
                 )}
               </div>
             ))}

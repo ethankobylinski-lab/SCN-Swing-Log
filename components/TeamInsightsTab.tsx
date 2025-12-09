@@ -1,5 +1,12 @@
 import React, { useMemo } from 'react';
-import { Session, Player, Drill, TeamGoal } from '../types';
+import { Player, Session, PitchSession, TeamGoal, Drill } from '../types';
+import { TeamGoalProgressCard } from './TeamGoalProgressCard';
+import { TeamConsistencyTracker } from './TeamConsistencyTracker';
+import { QualityQuantityMatrix } from './QualityQuantityMatrix';
+import { DrillBreakdownChart } from './DrillBreakdownChart';
+import { IntegrityAlerts } from './IntegrityAlerts';
+import { TeamTrendChart } from './TeamTrendChart';
+import { EngagementHeatmap } from './EngagementHeatmap';
 import {
     calculateTeamGoalProgress,
     getConsistencyData,
@@ -8,46 +15,39 @@ import {
     detectIntegrityIssues,
     calculateWeeklyTrends
 } from '../utils/teamInsights';
-import { TeamGoalProgressCard } from './TeamGoalProgressCard';
-import { TeamConsistencyTracker } from './TeamConsistencyTracker';
-import { QualityQuantityMatrix } from './QualityQuantityMatrix';
-import { DrillBreakdownChart } from './DrillBreakdownChart';
-import { IntegrityAlerts } from './IntegrityAlerts';
-import { TeamTrendChart } from './TeamTrendChart';
 
 interface TeamInsightsTabProps {
     players: Player[];
     sessions: Session[];
+    pitchSessions: PitchSession[];
     drills: Drill[];
     teamGoals: TeamGoal[];
-    teamId: string;
 }
 
 export const TeamInsightsTab: React.FC<TeamInsightsTabProps> = ({
     players,
     sessions,
+    pitchSessions,
     drills,
-    teamGoals,
-    teamId
+    teamGoals
 }) => {
-    // Calculate all insights data
-    const teamGoalData = useMemo(() => {
-        const activeGoal = teamGoals.find(g => g.status === 'Active');
-        if (!activeGoal) return null;
-        return calculateTeamGoalProgress(activeGoal, sessions, players);
-    }, [teamGoals, sessions, players]);
+    // Memoized calculations for performance
+    const goalProgress = useMemo(() =>
+        teamGoals.map(goal => calculateTeamGoalProgress(goal, sessions, players)),
+        [teamGoals, sessions, players]
+    );
 
     const consistencyData = useMemo(() =>
         getConsistencyData(sessions, players),
         [sessions, players]
     );
 
-    const quadrantData = useMemo(() =>
+    const matrixData = useMemo(() =>
         categorizePlayersByQuadrant(sessions, players),
         [sessions, players]
     );
 
-    const drillData = useMemo(() =>
+    const drillBreakdown = useMemo(() =>
         analyzeDrillBreakdown(sessions, drills),
         [sessions, drills]
     );
@@ -57,75 +57,75 @@ export const TeamInsightsTab: React.FC<TeamInsightsTabProps> = ({
         [sessions, players]
     );
 
-    const trendData = useMemo(() =>
+    const weeklyTrends = useMemo(() =>
         calculateWeeklyTrends(sessions),
         [sessions]
     );
 
-    // Show message if no data
-    if (sessions.length === 0) {
-        return (
-            <div className="flex items-center justify-center h-96">
-                <div className="text-center space-y-3">
-                    <p className="text-xl font-semibold text-muted-foreground">No Team Data Yet</p>
-                    <p className="text-sm text-muted-foreground">
-                        Team insights will appear once players start logging sessions.
-                    </p>
+    return (
+        <div className="space-y-6 pb-24">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-2xl font-bold text-foreground">Team Insights</h2>
+                    <p className="text-muted-foreground">Deep dive into team performance and trends</p>
                 </div>
             </div>
-        );
-    }
 
-    return (
-        <div className="space-y-8 pb-8">
-            {/* Page Header */}
-            <div>
-                <h1 className="text-3xl font-bold text-foreground">Team Insights</h1>
-                <p className="text-muted-foreground mt-1">
-                    Quick, actionable insights to guide team conversations
-                </p>
+            {/* NEW: Engagement Heatmap - High level visual overview */}
+            <EngagementHeatmap
+                sessions={sessions}
+                pitchSessions={pitchSessions}
+            />
+
+            {/* Top Row: Goal Progress & Consistency */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Active Goals Progress */}
+                <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">Goal Progress</h3>
+                    {goalProgress.length > 0 ? (
+                        goalProgress.map((progress, idx) => (
+                            <TeamGoalProgressCard key={idx} data={progress} />
+                        ))
+                    ) : (
+                        <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground">
+                            No active team goals
+                        </div>
+                    )}
+                </div>
+
+                {/* Consistency Tracker */}
+                <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">Consistency</h3>
+                    <TeamConsistencyTracker data={consistencyData} />
+                </div>
             </div>
 
-            {/* Team Goal Progress */}
-            {teamGoalData && (
-                <section>
-                    <h2 className="text-xl font-bold text-foreground mb-4">Team Goal Progress</h2>
-                    <TeamGoalProgressCard data={teamGoalData} />
-                </section>
-            )}
+            {/* Middle Row: Quality/Quantity Matrix */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-foreground">Performance Matrix</h3>
+                <QualityQuantityMatrix data={matrixData} />
+            </div>
 
-            {/* Consistency Tracker */}
-            <section>
-                <h2 className="text-xl font-bold text-foreground mb-4">Team Consistency</h2>
-                <TeamConsistencyTracker data={consistencyData} />
-            </section>
+            {/* Bottom Row: Drill Breakdown & Trends */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">Activity Breakdown</h3>
+                    <DrillBreakdownChart data={drillBreakdown} />
+                </div>
 
-            {/* Quality vs Quantity + Integrity Alerts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Quality vs Quantity Matrix */}
-                <section>
-                    <h2 className="text-xl font-bold text-foreground mb-4">Quality vs Quantity</h2>
-                    <QualityQuantityMatrix data={quadrantData} />
-                </section>
+                <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">Weekly Trends</h3>
+                    <TeamTrendChart data={weeklyTrends} />
+                </div>
+            </div>
 
-                {/* Integrity Alerts */}
-                <section>
-                    <h2 className="text-xl font-bold text-foreground mb-4">Integrity Alerts</h2>
+            {/* Integrity Alerts */}
+            {integrityAlerts.length > 0 && (
+                <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">Data Integrity</h3>
                     <IntegrityAlerts alerts={integrityAlerts} />
-                </section>
-            </div>
-
-            {/* Drill Breakdown */}
-            <section>
-                <h2 className="text-xl font-bold text-foreground mb-4">Drill Type Breakdown</h2>
-                <DrillBreakdownChart data={drillData} />
-            </section>
-
-            {/* Team Trend */}
-            <section>
-                <h2 className="text-xl font-bold text-foreground mb-4">Team Trend (Last 4 Weeks)</h2>
-                <TeamTrendChart data={trendData} />
-            </section>
+                </div>
+            )}
         </div>
     );
 };

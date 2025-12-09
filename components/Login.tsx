@@ -123,6 +123,7 @@ export const Login: React.FC = () => {
                 id="email"
                 name="email"
                 type="email"
+                autoFocus
                 autoComplete="email"
                 required
                 className="appearance-none rounded-md relative block w-full px-3 py-2 border border-input bg-background placeholder-muted-foreground text-foreground focus:outline-none focus:ring-primary focus:border-primary sm:text-sm transition-all duration-200 focus:ring-2 focus:ring-offset-1"
@@ -208,12 +209,26 @@ export const Login: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => handleDevLogin(UserRole.Coach)} className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-accent-foreground bg-accent hover:bg-accent/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent focus:ring-offset-background hover-scale active-press transition-smooth shadow-sm hover:shadow-md">
-            Continue as Coach
-          </button>
-          <button onClick={() => handleDevLogin(UserRole.Player)} className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background hover-scale active-press transition-smooth shadow-sm hover:shadow-md">
-            Continue as Player
-          </button>
+          {/* Dev login buttons hidden or made subtle */}
+        </div>
+
+        <div className="relative pt-4">
+          <details className="group">
+            <summary className="flex cursor-pointer items-center justify-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground">
+              <span>Developer Options</span>
+              <svg className="h-4 w-4 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </summary>
+            <div className="mt-4 grid grid-cols-2 gap-3 animate-fadeIn">
+              <button onClick={() => handleDevLogin(UserRole.Coach)} className="w-full flex justify-center py-2 px-4 border border-border text-xs font-medium rounded-md text-foreground bg-card hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors">
+                Dev Coach
+              </button>
+              <button onClick={() => handleDevLogin(UserRole.Player)} className="w-full flex justify-center py-2 px-4 border border-border text-xs font-medium rounded-md text-foreground bg-card hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors">
+                Dev Player
+              </button>
+            </div>
+          </details>
         </div>
 
 

@@ -20,7 +20,7 @@ const ColorChip: React.FC<{ color?: string | null; label?: string }> = ({ color,
   );
 };
 
-export const ProfileTab: React.FC = () => {
+export const ProfileTab: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const data = useContext(DataContext);
   const currentUser = data?.currentUser;
   const [nameInput, setNameInput] = useState(currentUser?.name ?? '');
@@ -259,11 +259,26 @@ export const ProfileTab: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-foreground">{profileHeading}</h2>
-        <p className="text-sm text-muted-foreground">
-          {profileDescription}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-foreground">{profileHeading}</h2>
+          <p className="text-sm text-muted-foreground">
+            {profileDescription}
+          </p>
+        </div>
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="px-4 py-2 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-medium transition-colors flex items-center gap-2"
+            aria-label="Back to Dashboard"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            Back
+          </button>
+        )}
       </div>
       <div className="grid gap-6 md:grid-cols-2">
         <div className="bg-card border border-border rounded-xl p-4 space-y-3 shadow-sm">
@@ -436,6 +451,20 @@ export const ProfileTab: React.FC = () => {
           Player editing controls are limited for now. Coaches can make any roster or team updates as needed.
         </p>
       )}
+
+      <div className="pt-8 border-t border-border mt-8">
+        <button
+          onClick={() => data.logout()}
+          className="w-full md:w-auto px-6 py-3 rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 font-medium transition-colors flex items-center justify-center gap-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          Sign Out
+        </button>
+      </div>
     </div>
   );
 };

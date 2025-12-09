@@ -1,4 +1,4 @@
-import { Session, Drill, SetResult, PersonalGoal, GoalType, DrillType, TeamGoal } from '../types';
+import { Session, Drill, SetResult, PersonalGoal, GoalType, DrillType, TeamGoal, PitchSession } from '../types';
 import { DRILL_TYPES } from '../constants';
 
 export const generateTeamCode = (): string => {
@@ -105,7 +105,59 @@ export const getCurrentMetricValue = (goal: PersonalGoal, sessions: Session[], d
     }
 };
 
-export const getCurrentTeamMetricValue = (goal: TeamGoal, sessions: Session[], drills: Drill[]): number => {
+export const getCurrentTeamMetricValue = (goal: TeamGoal, sessions: Session[], drills: Drill[], pitchSessions: PitchSession[] = []): number => {
+    // Handle Pitching Metrics
+    if (['Strike %', 'Velocity', 'Command', 'Total Pitches'].includes(goal.metric)) {
+        const relevantSessions = pitchSessions.filter(s => {
+            const d = new Date(s.date);
+            return d >= new Date(goal.startDate) && d <= new Date(goal.targetDate);
+        });
+
+        if (relevantSessions.length === 0) return 0;
+
+        switch (goal.metric) {
+            case 'Strike %':
+                const totalPitches = relevantSessions.reduce((sum, s) => sum + (s.totalPitches || 0), 0);
+                if (totalPitches === 0) return 0;
+                // Note: We need to ensure we have pitchRecords or strikes count. 
+                // PitchSession type has 'pitchRecords' but sometimes we might just have summary stats if not fully loaded?
+                // Assuming we have access to either pitchRecords or we need to rely on pre-calculated stats if available.
+                // For now, let's try to use pitchRecords if available, or fallback to a 'strikes' field if we added one (we didn't yet, but maybe we should).
+                // Actually, the PitchSession type in types.ts HAS pitchRecords.
+                const strikes = relevantSessions.reduce((sum, s) => {
+                    if (s.pitchRecords) {
+                        return sum + s.pitchRecords.filter(p => ['called_strike', 'swinging_strike', 'foul', 'in_play'].includes(p.outcome)).length;
+                    }
+                    // Fallback if we have a summary field (which we don't seem to have explicitly in the type, but maybe in the DB row mapping?)
+                    // The DB mapping in DataContext.tsx didn't add a 'strikes' field to the object, only 'pitchGoals'.
+                    // Wait, getPitchingSessionsForTeam in DataContext.tsx selects `pitch_records (*)`.
+                    // So pitchRecords should be populated.
+                    return sum;
+                }, 0);
+                return Math.round((strikes / totalPitches) * 100);
+
+            case 'Total Pitches':
+                return relevantSessions.reduce((sum, s) => sum + (s.totalPitches || 0), 0);
+
+            case 'Velocity':
+                let maxVel = 0;
+                relevantSessions.forEach(s => {
+                    s.pitchRecords?.forEach(p => {
+                        if (p.velocityMph && p.velocityMph > maxVel) maxVel = p.velocityMph;
+                    });
+                });
+                return maxVel;
+
+            case 'Command':
+                // Placeholder
+                return 0;
+
+            default:
+                return 0;
+        }
+    }
+
+    // Handle Hitting Metrics (Existing Logic)
     let setsWithSession = sessions.flatMap(session => session.sets.map(set => ({ session, set })));
 
     if (goal.drillType) {
@@ -361,4 +413,98 @@ export const groupSetsByZone = (sessions: Session[]): ZoneBreakdownData[] => {
         execution: data.repsAttempted > 0 ? Math.round((data.repsExecuted / data.repsAttempted) * 100) : 0,
         topPlayers: [], // Not used in player view
     }));
+};
+
+// --- NEW HELPERS ---
+
+export const doesSetMatchGoal = (goal: PersonalGoal, session: Session, set: SetResult, drills: Drill[]) => {
+    if (goal.drillType) {
+        const setDrillType = resolveDrillTypeForSet(session, set, drills);
+        if (setDrillType !== goal.drillType) {
+            return false;
+        }
+    }
+    if (goal.targetZones && goal.targetZones.length > 0) {
+        if (!set.targetZones?.some((zone) => goal.targetZones!.includes(zone))) {
+            return false;
+        }
+    }
+    if (goal.pitchTypes && goal.pitchTypes.length > 0) {
+        if (!set.pitchTypes?.some((pitch) => goal.pitchTypes!.includes(pitch))) {
+            return false;
+        }
+    }
+    return true;
+};
+
+export const collectGoalSets = (goal: PersonalGoal, sessions: Session[], drills: Drill[]) => {
+    return sessions.flatMap((session) =>
+        session.sets
+            .filter((set) => doesSetMatchGoal(goal, session, set, drills))
+            .map((set) => ({ session, set })),
+    );
+};
+
+export const summarizeSets = (sets: SetResult[]) =>
+    sets.reduce(
+        (acc, set) => ({
+            attempted: acc.attempted + set.repsAttempted,
+            executed: acc.executed + set.repsExecuted,
+            hardHits: acc.hardHits + set.hardHits,
+            strikeouts: acc.strikeouts + set.strikeouts,
+        }),
+        { attempted: 0, executed: 0, hardHits: 0, strikeouts: 0 },
+    );
+
+export const getGoalValueForSets = (goal: PersonalGoal, sets: SetResult[]) => {
+    switch (goal.metric) {
+        case 'Execution %':
+            return calculateExecutionPercentage(sets);
+        case 'Hard Hit %':
+            return calculateHardHitPercentage(sets);
+        case 'No Strikeouts':
+            return sets.reduce((sum, set) => sum + set.strikeouts, 0);
+        case 'Total Reps':
+            return sets.reduce((sum, set) => sum + set.repsAttempted, 0);
+        default:
+            return 0;
+    }
+};
+
+export const getPitchingGoalValue = (goal: PersonalGoal, sessions: PitchSession[]) => {
+    // Filter sessions by date range
+    const relevantSessions = sessions.filter(s => {
+        const d = new Date(s.date);
+        return d >= new Date(goal.startDate) && d <= new Date(goal.targetDate);
+    });
+
+    switch (goal.metric) {
+        case 'Strike %':
+            const totalPitches = relevantSessions.reduce((sum, s) => sum + (s.totalPitches || 0), 0);
+            if (totalPitches === 0) return 0;
+            const strikes = relevantSessions.flatMap(s => s.pitchRecords || []).filter(p => ['called_strike', 'swinging_strike', 'foul', 'in_play'].includes(p.outcome)).length;
+            return Math.round((strikes / totalPitches) * 100);
+        case 'Velocity':
+            // Max velocity in period
+            let maxVel = 0;
+            relevantSessions.forEach(s => {
+                s.pitchRecords?.forEach(p => {
+                    if (p.velocityMph && p.velocityMph > maxVel) maxVel = p.velocityMph;
+                });
+            });
+            return maxVel;
+        case 'Command':
+            // Placeholder for command score logic if complex, or simple strike % equivalent for now
+            // For now, let's use Strike % logic as a proxy or 0 if not defined
+            return 0;
+        default:
+            return 0;
+    }
+};
+
+export const resolveMinRepsRequirement = (goal: PersonalGoal): number | undefined => {
+    if (goal.metric !== 'Execution %') {
+        return undefined;
+    }
+    return goal.minReps ?? 50;
 };

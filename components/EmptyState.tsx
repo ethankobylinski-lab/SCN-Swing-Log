@@ -27,19 +27,19 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
     className = ''
 }) => {
     return (
-        <div className={`flex flex-col items-center justify-center text-center py-12 px-4 animate-fadeIn ${className}`}>
+        <div className={`flex flex-col items-center justify-center text-center py-16 px-6 animate-fadeIn ${className}`}>
             {/* Icon */}
-            <div className="text-6xl mb-4 opacity-50">
+            <div className="text-7xl mb-6 opacity-60">
                 {typeof icon === 'string' ? icon : icon}
             </div>
 
             {/* Title */}
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+            <h3 className="text-2xl font-bold text-foreground mb-3">
                 {title}
             </h3>
 
             {/* Message */}
-            <p className="text-gray-600 max-w-md mb-6">
+            <p className="text-base text-muted-foreground max-w-md mb-8 leading-relaxed">
                 {message}
             </p>
 
@@ -49,7 +49,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
                     {actionLabel && onAction && (
                         <button
                             onClick={onAction}
-                            className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors active-press"
+                            className="px-7 py-3.5 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 transition-colors active-press shadow-sm"
                         >
                             {actionLabel}
                         </button>
@@ -58,7 +58,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
                     {secondaryActionLabel && onSecondaryAction && (
                         <button
                             onClick={onSecondaryAction}
-                            className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors active-press"
+                            className="px-7 py-3.5 bg-secondary text-secondary-foreground rounded-lg font-semibold hover:bg-secondary/90 transition-colors active-press shadow-sm"
                         >
                             {secondaryActionLabel}
                         </button>

@@ -154,6 +154,9 @@ interface IDataContext {
     ) => Promise<void>;
     advanceSimulationStep: (runId: string) => Promise<void>;
     completeSimulationRun: (runId: string) => Promise<SimulationRunSummary>;
+    // --- Drill and Program Getters ---
+    getDrillAssignmentsForTeam: (teamId: string) => DrillAssignment[];
+    getPitchingProgramsForTeam: (teamId: string) => Promise<PitchSimulationTemplate[]>;
     // --- State Management ---
     activeTeam: Team | undefined;
     activeTeamId?: string;
@@ -479,6 +482,7 @@ const mapSessionFeedbackRow = (row: SupabaseSessionFeedbackRow): SessionFeedback
     note: row.note ?? undefined,
     createdAt: row.created_at ?? undefined,
     updatedAt: row.updated_at ?? undefined,
+    seasonYear: row.created_at ? new Date(row.created_at).getFullYear().toString() : new Date().getFullYear().toString(),
 });
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -1693,7 +1697,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 pitch_records (*)
             `)
             .eq('team_id', teamId)
-            .in('status', ['completed', 'emergency_review'])
+            .eq('team_id', teamId)
             .order('created_at', { ascending: false });
 
         if (error) {
@@ -1709,13 +1713,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             date: row.created_at, // Use created_at as date since there's no separate date column
             sessionName: row.session_name,
             sessionType: row.session_type,
+            status: 'completed', // Default status since column doesn't exist
             gameSituationEnabled: row.game_situation_enabled,
             pitchGoals: row.pitch_goals,
             totalPitches: row.total_pitches,
             createdAt: row.created_at,
             updatedAt: row.updated_at,
             sessionStartTime: row.session_start_time,
-            status: row.status || 'completed',
             pitchRecords: (row.pitch_records || []).map((pr: any) => ({
                 id: pr.id,
                 sessionId: pr.session_id,
@@ -3765,6 +3769,24 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
     };
 
+    // =========================================================================
+    // Coach: Getter functions for drill assignments and pitching programs
+    // =========================================================================
+
+    /**
+     * Get all drill assignments for a team (read-only access to existing state)
+     */
+    const getDrillAssignmentsForTeam = (teamId: string): DrillAssignment[] => {
+        return assignments.filter(a => a.teamId === teamId);
+    };
+
+    /**
+     * Get all pitching simulation templates/programs for a team (async read-only)
+     */
+    const getPitchingProgramsForTeam = async (teamId: string): Promise<PitchSimulationTemplate[]> => {
+        return await getSimulationTemplatesForTeam(teamId);
+    };
+
 
     const value = {
         currentUser,
@@ -3849,6 +3871,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         recordSimulationPitch,
         advanceSimulationStep,
         completeSimulationRun,
+        // Drill and program getters
+        getDrillAssignmentsForTeam,
+        getPitchingProgramsForTeam,
         activeTeam,
         activeTeamId,
         currentUserRole: currentUser?.role ?? null,

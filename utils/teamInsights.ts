@@ -42,7 +42,14 @@ export interface DrillBreakdown {
     isUndertrained: boolean;
 }
 
-export type IntegrityAlertType = 'perfect-streak' | 'identical-counts' | 'no-variation' | 'too-fast';
+export type IntegrityAlertType =
+    | 'perfect-streak'
+    | 'identical-counts'
+    | 'no-variation'
+    | 'too-fast'
+    | 'no-activity'
+    | 'declining-frequency'
+    | 'never-recorded';
 
 export interface IntegrityAlert {
     playerId: string;
@@ -399,6 +406,85 @@ export function detectIntegrityIssues(sessions: Session[], players: Player[]): I
                 }
             }
         });
+    });
+
+    // NEW ENGAGEMENT CHECKS
+    // Check 5: Players inactive for 14+ days (but have recorded before)
+    players.forEach(player => {
+        const playerSessions = sessions.filter(s => s.playerId === player.id);
+
+        if (playerSessions.length === 0) return; // Handled by "never-recorded" check
+
+        const lastSession = playerSessions.sort((a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        )[0];
+
+        const daysSinceLast = Math.floor(
+            (Date.now() - new Date(lastSession.date).getTime()) / (24 * 60 * 60 * 1000)
+        );
+
+        if (daysSinceLast >= 14) {
+            alerts.push({
+                playerId: player.id,
+                playerName: player.name,
+                alertType: 'no-activity',
+                description: `No activity for ${daysSinceLast} days`,
+                severity: daysSinceLast >= 30 ? 'high' : 'medium'
+            });
+        }
+    });
+
+    // Check 6: Players who have never recorded a session
+    const playersWithSessions = new Set(sessions.map(s => s.playerId));
+    players.forEach(player => {
+        if (!playersWithSessions.has(player.id)) {
+            alerts.push({
+                playerId: player.id,
+                playerName: player.name,
+                alertType: 'never-recorded',
+                description: 'Player has never logged a session',
+                severity: 'medium'
+            });
+        }
+    });
+
+    // Check 7: Declining frequency (sessions trending downward over last 4 weeks)
+    players.forEach(player => {
+        const playerSessions = sessions
+            .filter(s => s.playerId === player.id)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        if (playerSessions.length < 8) return; // Need at least 8 sessions to detect trend
+
+        // Split into 4 weeks
+        const now = Date.now();
+        const week1 = playerSessions.filter(s => {
+            const age = (now - new Date(s.date).getTime()) / (7 * 24 * 60 * 60 * 1000);
+            return age <= 1;
+        }).length;
+        const week2 = playerSessions.filter(s => {
+            const age = (now - new Date(s.date).getTime()) / (7 * 24 * 60 * 60 * 1000);
+            return age > 1 && age <= 2;
+        }).length;
+        const week3 = playerSessions.filter(s => {
+            const age = (now - new Date(s.date).getTime()) / (7 * 24 * 60 * 60 * 1000);
+            return age > 2 && age <= 3;
+        }).length;
+        const week4 = playerSessions.filter(s => {
+            const age = (now - new Date(s.date).getTime()) / (7 * 24 * 60 * 60 * 1000);
+            return age > 3 && age <= 4;
+        }).length;
+
+        // Check if declining (each week less than previous)
+        if (week1 < week2 && week2 < week3 && week3 < week4 && week4 > 0) {
+            alerts.push({
+                playerId: player.id,
+                playerName: player.name,
+                alertType: 'declining-frequency',
+                description: `Session frequency declining over last 4 weeks (${week4}→${week3}→${week2}→${week1})`,
+                severity: 'low'
+            });
+        }
     });
 
     return alerts.sort((a, b) => {
