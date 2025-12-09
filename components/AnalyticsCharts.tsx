@@ -41,8 +41,8 @@ const CustomTooltip: React.FC<any> = ({ active, payload, label }) => {
 };
 
 const ChartCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-    <h3 className="text-lg font-bold text-primary mb-4">{title}</h3>
+  <div className="bg-card border border-border p-5 rounded-2xl shadow-sm">
+    <h3 className="text-base font-semibold text-foreground mb-4">{title}</h3>
     <div className="h-80">
       {children}
     </div>

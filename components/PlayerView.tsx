@@ -1921,6 +1921,8 @@ export const PlayerView: React.FC = () => {
                             setLogMode('hitting');
                             setCurrentView('log_session');
                         }}
+                        onNavigateToHitting={() => setCurrentView('hitting')}
+                        onNavigateToPitching={() => setCurrentView('pitching')}
                     />
                 );
             case 'hitting':

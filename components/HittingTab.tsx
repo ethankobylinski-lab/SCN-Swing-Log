@@ -44,7 +44,7 @@ export const HittingTab: React.FC<HittingTabProps> = ({
                     <h1 className="text-2xl font-bold text-foreground">Hitting</h1>
                     <p className="text-sm text-muted-foreground">Track your swing progress</p>
                 </div>
-                <Button onClick={onLogSession} variant="primary" className="gap-2">
+                <Button onClick={onLogSession} variant="primary" className="gap-2 rounded-full">
                     <PlusIcon className="w-5 h-5" />
                     Log Session
                 </Button>
@@ -78,8 +78,24 @@ export const HittingTab: React.FC<HittingTabProps> = ({
                         ))}
                     </div>
                 ) : (
-                    <div className="bg-muted/20 border border-border/50 rounded-xl p-6 text-center">
-                        <p className="text-muted-foreground">No active hitting goals.</p>
+                    <div className="bg-card border border-border rounded-2xl p-8 text-center shadow-sm">
+                        <div className="flex flex-col items-center gap-3">
+                            <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center">
+                                <span className="text-3xl">🎯</span>
+                            </div>
+                            <div>
+                                <p className="font-semibold text-foreground mb-1">No hitting goals yet</p>
+                                <p className="text-sm text-muted-foreground">Set a goal to track your progress</p>
+                            </div>
+                            <Button
+                                onClick={onAddGoal}
+                                variant="secondary"
+                                size="sm"
+                                className="mt-2"
+                            >
+                                Set a goal
+                            </Button>
+                        </div>
                     </div>
                 )}
             </section>

@@ -5,6 +5,7 @@ import { ListSkeleton } from './LoadingSkeleton';
 import { NoHistoryEmpty } from './EmptyState';
 import { NoteIcon } from './icons/NoteIcon';
 import { PitchSessionDetailModal } from './PitchSessionDetailModal';
+import { ChevronRight } from 'lucide-react';
 import {
     formatDate,
     describeRelativeDay,
@@ -177,16 +178,16 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {(sessionFilter === 'all' || (hideFilters && initialFilter === 'all')) && (
                     <>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Sessions</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Total Sessions</p>
                             <p className="text-3xl font-bold text-foreground">{stats.totalSessions}</p>
                         </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Batting Reps</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Batting Reps</p>
                             <p className="text-3xl font-bold text-primary">{stats.battingReps.toLocaleString()}</p>
                         </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pitches Thrown</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Pitches Thrown</p>
                             <p className="text-3xl font-bold text-accent">{(stats.pitchingPitches || 0).toLocaleString()}</p>
                         </div>
                     </>
@@ -194,16 +195,16 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
 
                 {(sessionFilter === 'batting' || (hideFilters && initialFilter === 'batting')) && (
                     <>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Batting Sessions</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Batting Sessions</p>
                             <p className="text-3xl font-bold text-foreground">{stats.totalBattingSessions}</p>
                         </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Reps</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Total Reps</p>
                             <p className="text-3xl font-bold text-primary">{stats.battingReps.toLocaleString()}</p>
                         </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Avg Execution %</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Avg Execution %</p>
                             <p className="text-3xl font-bold text-primary">{stats.avgBattingExecution}%</p>
                         </div>
                     </>
@@ -211,25 +212,33 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
 
                 {(sessionFilter === 'pitching' || (hideFilters && initialFilter === 'pitching')) && (
                     <>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pitching Sessions</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Pitching Sessions</p>
                             <p className="text-3xl font-bold text-foreground">{stats.totalPitchingSessions}</p>
                         </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Overall Strike %</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Overall Strike %</p>
                             <p className="text-3xl font-bold text-accent">{stats.overallStrikePercentage}%</p>
                         </div>
-                        <div className="bg-card border border-border rounded-lg p-4 text-center">
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Avg Accuracy %</p>
+                        <div className="bg-card border border-border rounded-2xl p-5 text-center shadow-sm">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Avg Accuracy %</p>
                             <p className="text-3xl font-bold text-accent">{stats.avgAccuracy}%</p>
                         </div>
                     </>
                 )}
             </div>
 
+            {/* Filter placeholder */}
+            {hideFilters && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                    <span className="font-medium">Filter:</span>
+                    <span>All sessions (filtering coming soon)</span>
+                </div>
+            )}
+
             {/* Session List */}
-            <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-                <ul className="divide-y divide-border">
+            <div className="space-y-3">
+                <ul className="space-y-3">
                     {loading ? (
                         <ListSkeleton count={5} />
                     ) : filteredSessions.length > 0 ? filteredSessions.map((session: any) => {
@@ -251,7 +260,7 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
                             const hasNotes = session.pitchSession?.notes && session.pitchSession.notes.trim().length > 0;
 
                             return (
-                                <li key={session.id} className="bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow animate-fadeInUp">
+                                <li key={session.id}>
                                     <div
                                         role="button"
                                         tabIndex={0}
@@ -259,35 +268,37 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
                                             setSelectedPitchSession(session.pitchSession);
                                         }}
                                         onKeyDown={handleKeyDown}
-                                        className="w-full grid gap-4 p-4 items-center md:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr]"
+                                        className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-pointer group min-h-[72px]"
                                     >
-                                        <div>
-                                            <p className="font-semibold text-primary">{session.name}</p>
-                                            <p className="text-sm text-muted-foreground">
-                                                {(() => {
-                                                    const dateStr = session.displayDate;
-                                                    if (!dateStr) return 'N/A';
-                                                    const date = new Date(dateStr);
-                                                    if (isNaN(date.getTime())) return 'Invalid Date';
-                                                    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                                                })()}
-                                            </p>
-                                            <p className="text-xs text-accent mt-1 font-medium">⚾ Pitching Session</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-sm text-muted-foreground">Pitches</p>
-                                            <p className="font-bold text-lg text-foreground">{pitches}</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-sm text-muted-foreground">Strike %</p>
-                                            <p className="font-bold text-lg text-foreground">{strikeRate}%</p>
-                                        </div>
-                                        <div className="flex items-center justify-end gap-2 text-sm">
-                                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${hasNotes ? 'bg-secondary/15 text-secondary' : 'text-muted-foreground'} text-xs`}>
-                                                <NoteIcon filled={hasNotes} className={hasNotes ? 'text-secondary' : 'text-muted-foreground'} />
-                                                {hasNotes ? 'Notes added' : 'No notes'}
-                                            </span>
-                                            <span className="text-muted-foreground text-xs">View Details →</span>
+                                        <div className="grid gap-4 items-center md:grid-cols-[1.5fr_1fr_1fr_auto]">
+                                            <div>
+                                                <p className="font-bold text-lg text-foreground group-hover:text-primary transition-colors mb-1">{session.name}</p>
+                                                <p className="text-sm text-muted-foreground">
+                                                    {(() => {
+                                                        const dateStr = session.displayDate;
+                                                        if (!dateStr) return 'N/A';
+                                                        const date = new Date(dateStr);
+                                                        if (isNaN(date.getTime())) return 'Invalid Date';
+                                                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                                    })()}
+                                                </p>
+                                                <span className="inline-block mt-1 text-xs px-2 py-0.5 bg-secondary/10 text-secondary rounded-full font-medium">Pitching Session</span>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Pitches</p>
+                                                <p className="text-2xl font-bold text-foreground">{pitches}</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Strike %</p>
+                                                <p className={`text-2xl font-bold ${strikeRate === 0 ? 'text-muted-foreground' : 'text-accent'}`}>{strikeRate}%</p>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${hasNotes ? 'bg-secondary/10 text-secondary border border-secondary/20' : 'text-muted-foreground bg-muted/30'}`}>
+                                                    <NoteIcon filled={hasNotes} className={`w-3 h-3 ${hasNotes ? 'text-secondary' : 'text-muted-foreground'}`} />
+                                                    {hasNotes ? 'Has notes' : 'No notes'}
+                                                </span>
+                                                <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+                                            </div>
                                         </div>
                                     </div>
                                 </li>
@@ -295,62 +306,43 @@ export const SessionHistory: React.FC<SessionHistoryProps> = ({
                         }
 
                         // Hitting session rendering
-                        return (
-                            <li key={session.id} className="group bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-all duration-300 animate-fadeInUp overflow-hidden relative">
-                                {/* Hover Gradient Effect */}
-                                <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                        const totalReps = session.sets ? session.sets.reduce((sum, set) => sum + set.repsAttempted, 0) : 0;
+                        const execPct = session.sets ? calculateExecutionPercentage(session.sets) : 0;
+                        const drillType = drill?.drillType || 'Session';
 
+                        return (
+                            <li key={session.id}>
                                 <div
                                     role="button"
                                     tabIndex={0}
                                     onClick={() => onSelectSession(session)}
                                     onKeyDown={handleKeyDown}
-                                    className="w-full grid gap-4 p-5 items-center md:grid-cols-[1.3fr_0.8fr_0.8fr_0.7fr] relative z-10"
+                                    className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-pointer group min-h-[72px]"
                                 >
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="w-2 h-2 rounded-full bg-primary"></span>
-                                            <p className="font-bold text-lg text-foreground group-hover:text-primary transition-colors">{session.name}</p>
+                                    <div className="grid gap-4 items-center md:grid-cols-[1.5fr_1fr_1fr_auto]">
+                                        <div>
+                                            <p className="font-bold text-lg text-foreground group-hover:text-primary transition-colors mb-1">{session.name}</p>
+                                            <p className="text-sm text-muted-foreground mb-1">
+                                                {formatDate(session.date)}
+                                                {editDescriptor && <span className="ml-2 text-xs">· Edited {editDescriptor}</span>}
+                                            </p>
+                                            <span className="inline-block text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">{drillType}</span>
                                         </div>
-                                        <p className="text-sm text-muted-foreground font-medium flex items-center gap-2">
-                                            <span className="opacity-70">📅</span> {formatDate(session.date)}
-                                        </p>
-                                        {editDescriptor && (
-                                            <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-wider opacity-70">Edited {editDescriptor}</p>
-                                        )}
-                                        {hasReflection && (
-                                            <p className="text-xs text-muted-foreground mt-2 italic border-l-2 border-primary/30 pl-2 line-clamp-1">"{session.reflection}"</p>
-                                        )}
-                                    </div>
-                                    <div className="text-center bg-muted/20 rounded-lg p-2 border border-border/50">
-                                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Total Reps</p>
-                                        <p className="font-black text-xl text-foreground">
-                                            {session.sets ? session.sets.reduce((sum, set) => sum + set.repsAttempted, 0) : 0}
-                                        </p>
-                                    </div>
-                                    <div className="text-center bg-muted/20 rounded-lg p-2 border border-border/50">
-                                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-1">Exec %</p>
-                                        <p className="font-black text-xl text-primary">{session.sets ? calculateExecutionPercentage(session.sets) : 0}%</p>
-                                    </div>
-                                    <div className="flex items-center justify-end gap-2 text-sm">
-                                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${hasReflection ? 'bg-secondary/10 text-secondary border border-secondary/20' : 'text-muted-foreground bg-muted/30 border border-transparent'}`}>
-                                            <NoteIcon filled={hasReflection} className={`w-3 h-3 ${hasReflection ? 'text-secondary' : 'text-muted-foreground'}`} />
-                                            {hasReflection ? 'Reflection' : 'No notes'}
-                                        </span>
-                                        {onEditSession && (
-                                            <Button
-                                                type="button"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    onEditSession(session);
-                                                }}
-                                                variant="secondary"
-                                                size="sm"
-                                                className="opacity-0 group-hover:opacity-100 transition-opacity"
-                                            >
-                                                Edit
-                                            </Button>
-                                        )}
+                                        <div className="text-center">
+                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Reps</p>
+                                            <p className="text-2xl font-bold text-foreground">{totalReps}</p>
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Exec %</p>
+                                            <p className={`text-2xl font-bold ${execPct === 0 ? 'text-muted-foreground' : 'text-primary'}`}>{execPct}%</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${hasReflection ? 'bg-secondary/10 text-secondary border border-secondary/20' : 'text-muted-foreground bg-muted/30'}`}>
+                                                <NoteIcon filled={hasReflection} className={`w-3 h-3 ${hasReflection ? 'text-secondary' : 'text-muted-foreground'}`} />
+                                                {hasReflection ? 'Has notes' : 'No notes'}
+                                            </span>
+                                            <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+                                        </div>
                                     </div>
                                 </div>
                             </li>

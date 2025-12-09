@@ -19,6 +19,8 @@ interface PlayerDashboardTabProps {
     onViewProfile: () => void;
     onStartProgram: (program: PitchSimulationTemplate) => void;
     onStartDrill: (drill: Drill) => void;
+    onNavigateToHitting?: () => void;
+    onNavigateToPitching?: () => void;
 }
 
 export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
@@ -32,7 +34,9 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
     onStartPitching,
     onViewProfile,
     onStartProgram,
-    onStartDrill
+    onStartDrill,
+    onNavigateToHitting,
+    onNavigateToPitching
 }) => {
     const { primaryColor, lightAccent } = useTeamColor();
 
@@ -99,14 +103,28 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
             <section className="space-y-3">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">This Week</h2>
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 rounded-xl p-4 text-center">
+                    <button
+                        onClick={onNavigateToHitting}
+                        className={`bg-gradient-to-br border rounded-2xl p-5 text-center transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer min-h-[88px] ${
+                            stats.hittingSessionsThisWeek > 0
+                                ? 'from-primary/15 to-primary/8 border-primary/30'
+                                : 'from-primary/10 to-primary/5 border-primary/20'
+                        }`}
+                    >
                         <p className="text-3xl font-bold text-primary">{stats.hittingSessionsThisWeek}</p>
                         <p className="text-xs text-muted-foreground mt-1">Hitting Sessions</p>
-                    </div>
-                    <div className="bg-gradient-to-br from-secondary/10 to-secondary/5 border border-secondary/20 rounded-xl p-4 text-center">
+                    </button>
+                    <button
+                        onClick={onNavigateToPitching}
+                        className={`bg-gradient-to-br border rounded-2xl p-5 text-center transition-all hover:shadow-md hover:scale-[1.02] cursor-pointer min-h-[88px] ${
+                            stats.pitchingSessionsThisWeek > 0
+                                ? 'from-secondary/15 to-secondary/8 border-secondary/30'
+                                : 'from-secondary/10 to-secondary/5 border-secondary/20'
+                        }`}
+                    >
                         <p className="text-3xl font-bold text-secondary">{stats.pitchingSessionsThisWeek}</p>
                         <p className="text-xs text-muted-foreground mt-1">Pitching Sessions</p>
-                    </div>
+                    </button>
                 </div>
             </section>
 
@@ -116,7 +134,7 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
                     <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Assigned Work</h2>
                     <div className="space-y-3">
                         {assignedDrills.slice(0, 3).map(drill => (
-                            <div key={drill.id} className="bg-card border border-border rounded-xl p-4 shadow-sm">
+                            <div key={drill.id} className="bg-card border border-border rounded-2xl p-5 shadow-sm">
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -142,7 +160,7 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
                             </div>
                         ))}
                         {assignedSimulations.slice(0, 3).map(program => (
-                            <div key={program.id} className="bg-card border border-border rounded-xl p-4 shadow-sm">
+                            <div key={program.id} className="bg-card border border-border rounded-2xl p-5 shadow-sm">
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center flex-shrink-0">
@@ -159,11 +177,11 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
                                 </div>
                                 <Button
                                     onClick={() => onStartProgram(program)}
-                                    variant="secondary"
+                                    variant={program.status === 'active' ? 'secondary' : 'primary'}
                                     size="sm"
                                     className="w-full"
                                 >
-                                    Start Program
+                                    {program.status === 'active' ? 'Continue Program' : 'Start Program'}
                                 </Button>
                             </div>
                         ))}
@@ -175,7 +193,7 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
             {strengths.length > 0 && (
                 <section className="space-y-3">
                     <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Analysis</h2>
-                    <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+                    <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
                         {strengths.map((item, idx) => (
                             <div key={idx} className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -201,7 +219,7 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
             {/* Recent Activity Trends */}
             <section className="space-y-3">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">14-Day Activity</h2>
-                <div className="bg-card border border-border rounded-xl p-4 h-32 flex items-end justify-between gap-1">
+                <div className="bg-card border border-border rounded-2xl p-5 h-32 flex items-end justify-between gap-1">
                     {trends.map((day, idx) => (
                         <div key={idx} className="flex-1 flex flex-col items-center gap-1 group relative">
                             <div
@@ -225,21 +243,21 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
             </section>
 
             {/* Start Training Section */}
-            <section className="space-y-3">
+            <section className="space-y-3 mt-8">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Start Training</h2>
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Button
                         onClick={onStartHitting}
                         variant="primary"
-                        className="w-full justify-start h-auto py-4 px-4"
+                        className="w-full justify-start h-auto py-5 px-6"
                     >
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-primary-foreground/20 flex items-center justify-center">
-                                <span className="text-xl">⚾️</span>
+                        <div className="flex items-center gap-4 w-full">
+                            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                                <span className="text-2xl">⚾️</span>
                             </div>
-                            <div className="text-left">
+                            <div className="text-left flex-1">
                                 <p className="font-bold text-lg">Start Hitting Session</p>
-                                <p className="text-xs opacity-90 font-normal">Log swings, tee work, and drills</p>
+                                <p className="text-sm opacity-90 font-normal">Log swings, tee work, and drills</p>
                             </div>
                         </div>
                     </Button>
@@ -247,15 +265,15 @@ export const PlayerDashboardTab: React.FC<PlayerDashboardTabProps> = ({
                     <Button
                         onClick={onStartPitching}
                         variant="secondary"
-                        className="w-full justify-start h-auto py-4 px-4"
+                        className="w-full justify-start h-auto py-5 px-6"
                     >
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-secondary-foreground/20 flex items-center justify-center">
-                                <span className="text-xl">🎯</span>
+                        <div className="flex items-center gap-4 w-full">
+                            <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0">
+                                <span className="text-2xl">🎯</span>
                             </div>
-                            <div className="text-left">
+                            <div className="text-left flex-1">
                                 <p className="font-bold text-lg">Start Pitching Session</p>
-                                <p className="text-xs opacity-90 font-normal">Track bullpens and flat grounds</p>
+                                <p className="text-sm opacity-90 font-normal">Track bullpens and flat grounds</p>
                             </div>
                         </div>
                     </Button>

@@ -40,16 +40,16 @@ export const Button: React.FC<ButtonProps> = ({
         }
     }, [showSuccessPulse]);
 
-    const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed active-press will-animate';
+    const baseStyles = 'inline-flex items-center justify-center font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer';
 
     const variantStyles: Record<ButtonVariant, string> = {
-        primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-        secondary: 'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500',
-        danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-        ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-gray-500',
-        success: 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500',
-        accent: 'bg-purple-600 text-white hover:bg-purple-700 focus:ring-purple-500',
-        link: 'bg-transparent text-blue-600 hover:underline focus:ring-0 p-0 h-auto'
+        primary: 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md rounded-full focus:ring-blue-500',
+        secondary: 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50 hover:shadow-sm rounded-lg focus:ring-blue-500',
+        danger: 'bg-red-600 text-white hover:bg-red-700 hover:shadow-md rounded-lg focus:ring-red-500',
+        ghost: 'bg-transparent text-gray-700 hover:bg-gray-100 rounded-lg focus:ring-gray-500',
+        success: 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md rounded-lg focus:ring-green-500',
+        accent: 'bg-purple-600 text-white hover:bg-purple-700 hover:shadow-md rounded-lg focus:ring-purple-500',
+        link: 'bg-transparent text-blue-600 hover:underline focus:ring-0 p-0 h-auto rounded-none'
     };
 
     const sizeStyles: Record<ButtonSize, string> = {

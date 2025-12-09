@@ -79,7 +79,7 @@ export const StrikeZoneHeatmap: React.FC<StrikeZoneHeatmapProps> = ({ data, batt
     }, [battingSide]);
 
     return (
-        <div className="bg-card border border-border p-6 rounded-xl shadow-sm h-full flex flex-col items-center">
+        <div className="bg-card border border-border p-6 rounded-2xl shadow-sm h-full flex flex-col items-center">
             <div className="text-center mb-6">
                 <h3 className="text-lg font-bold text-foreground flex items-center justify-center gap-2">
                     <span className="w-2 h-6 bg-primary rounded-full"></span>

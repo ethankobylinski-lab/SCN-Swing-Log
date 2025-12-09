@@ -74,7 +74,7 @@ export const GoalProgress: React.FC<{
 
     return (
         <div
-            className={`bg-card border border-border/60 p-4 rounded-xl space-y-3 shadow-sm ${onSelect ? 'cursor-pointer hover:border-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary/60' : ''
+            className={`bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm transition-all ${onSelect ? 'cursor-pointer hover:shadow-md hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60' : ''
                 }`}
             role={onSelect ? 'button' : undefined}
             tabIndex={onSelect ? 0 : undefined}
@@ -82,11 +82,13 @@ export const GoalProgress: React.FC<{
             onKeyDown={handleKeyDown}
         >
             <div className="flex justify-between items-start gap-4">
-                <div>
-                    <h4 className="font-semibold text-card-foreground">{formatGoalName(goal)}</h4>
-                    <p className="text-xs text-muted-foreground">Target: {displayTarget} by {formatDate(goal.targetDate)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        {goal.createdByRole === UserRole.Coach ? 'Coach-assigned goal' : 'Self-set goal'}
+                <div className="flex-1">
+                    <h4 className="font-bold text-lg text-foreground mb-1">{formatGoalName(goal)}</h4>
+                    <p className="text-sm text-muted-foreground">
+                        {displayValue} / {displayTarget}
+                    </p>
+                    <p className="text-xs text-foreground/70 mt-1">
+                        Deadline: {formatDate(goal.targetDate)}
                     </p>
                 </div>
                 <button
@@ -96,19 +98,26 @@ export const GoalProgress: React.FC<{
                     }}
                     disabled={isDeleting}
                     aria-label="Delete goal"
-                    className="text-muted-foreground hover:text-destructive text-lg font-bold disabled:opacity-50"
+                    className="text-muted-foreground hover:text-destructive text-xl font-bold disabled:opacity-50 transition-colors flex-shrink-0"
                 >
                     {isDeleting ? '...' : '\u00d7'}
                 </button>
             </div>
-            <div className="flex items-center gap-3 mt-2">
-                <div className="w-full bg-background rounded-full h-2.5">
-                    <div className="bg-secondary h-2.5 rounded-full" style={{ width: `${Math.min(progress, 100)}%` }}></div>
+            <div className="space-y-2">
+                <div className="relative w-full bg-muted rounded-full h-3 overflow-hidden">
+                    <div 
+                        className="bg-blue-600 h-3 rounded-full transition-all duration-300" 
+                        style={{ width: `${Math.min(progress, 100)}%` }}
+                    ></div>
+                    {progress > 10 && (
+                        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white">
+                            {Math.round(progress)}% complete
+                        </span>
+                    )}
                 </div>
-                <span className="text-sm font-bold text-primary">{displayValue}</span>
             </div>
             {goal.metric === 'Execution %' && minRepsRequired && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-xs text-foreground/70">
                     Volume: {totalRepsLogged}/{minRepsRequired} reps logged
                 </p>
             )}

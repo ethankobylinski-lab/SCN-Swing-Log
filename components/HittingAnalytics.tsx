@@ -21,11 +21,11 @@ interface HittingAnalyticsProps {
     player: Player;
 }
 
-const KPICard: React.FC<{ title: string; value: string; description: string }> = ({ title, value, description }) => (
-    <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
-        <p className="mt-1 text-3xl font-semibold text-foreground">{value}</p>
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
+const KPICard: React.FC<{ title: string; value: string; description: string; accent?: 'blue' | 'neutral' }> = ({ title, value, description, accent = 'neutral' }) => (
+    <div className={`bg-card border border-border rounded-2xl p-5 shadow-sm ${accent === 'blue' ? 'border-blue-200/50 bg-gradient-to-br from-blue-50/50 to-white' : ''}`}>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{title}</p>
+        <p className={`text-4xl font-bold mb-2 ${accent === 'blue' ? 'text-blue-600' : 'text-foreground'}`}>{value}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
     </div>
 );
 
@@ -81,12 +81,13 @@ export const HittingAnalytics: React.FC<HittingAnalyticsProps> = ({ sessions, dr
         <div className="space-y-8">
             {/* Summary Cards Row */}
             <div>
-                <h2 className="text-xl font-bold text-foreground mb-4">Hitting Summary</h2>
+                <h2 className="text-lg font-semibold text-foreground mb-4">Hitting Summary</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <KPICard
                         title="Overall Execution %"
                         value={`${analytics.kpi.execPct}%`}
                         description="Successfully executed reps vs. total"
+                        accent="blue"
                     />
                     <KPICard
                         title="Hard-Hit %"
@@ -110,7 +111,10 @@ export const HittingAnalytics: React.FC<HittingAnalyticsProps> = ({ sessions, dr
 
             {/* Performance Over Time - Full Width */}
             <div>
-                <h2 className="text-xl font-bold text-foreground mb-4">Performance Trends</h2>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-foreground">Performance Trends</h2>
+                    <p className="text-xs text-muted-foreground">Last {analytics.performanceOverTimeData.length} sessions</p>
+                </div>
                 <AnalyticsCharts
                     performanceOverTimeData={analytics.performanceOverTimeData}
                     drillSuccessData={analytics.drillSuccessData}
@@ -118,7 +122,7 @@ export const HittingAnalytics: React.FC<HittingAnalyticsProps> = ({ sessions, dr
             </div>
             {/* Performance Breakdowns Row */}
             <div>
-                <h2 className="text-xl font-bold text-foreground mb-4">Performance Breakdowns</h2>
+                <h2 className="text-lg font-semibold text-foreground mb-4">Performance Breakdowns</h2>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Zone Heat Map */}
                     <div className="lg:col-span-1">
@@ -127,41 +131,41 @@ export const HittingAnalytics: React.FC<HittingAnalyticsProps> = ({ sessions, dr
 
                     {/* Breakdowns */}
                     <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 content-start">
-                        <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                            <h3 className="text-lg font-bold text-primary mb-4">By Drill Type</h3>
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+                            <h3 className="text-base font-bold text-primary mb-4 uppercase tracking-wide">By Drill Type</h3>
                             <div className="space-y-4">
                                 {analytics.byDrillTypeData.length > 0 ? (
                                     analytics.byDrillTypeData.map(d => (
                                         <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} />
                                     ))
                                 ) : (
-                                    <p className="text-muted-foreground text-center py-4">No data available.</p>
+                                    <p className="text-muted-foreground text-center py-4 text-sm">No data available.</p>
                                 )}
                             </div>
                         </div>
 
-                        <div className="bg-card border border-border p-4 rounded-lg shadow-sm">
-                            <h3 className="text-lg font-bold text-primary mb-4">By Pitch Type</h3>
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+                            <h3 className="text-base font-bold text-primary mb-4 uppercase tracking-wide">By Pitch Type</h3>
                             <div className="space-y-4">
                                 {analytics.byPitchTypeData.length > 0 ? (
                                     analytics.byPitchTypeData.map(d => (
                                         <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-accent" />
                                     ))
                                 ) : (
-                                    <p className="text-muted-foreground text-center py-4">Log pitch types to see this breakdown.</p>
+                                    <p className="text-muted-foreground text-center py-4 text-sm">Log pitch types to see this breakdown.</p>
                                 )}
                             </div>
                         </div>
 
-                        <div className="bg-card border border-border p-4 rounded-lg shadow-sm md:col-span-2">
-                            <h3 className="text-lg font-bold text-primary mb-4">By Count</h3>
+                        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm md:col-span-2">
+                            <h3 className="text-base font-bold text-primary mb-4 uppercase tracking-wide">By Count</h3>
                             <div className="space-y-4">
                                 {analytics.byCountData.length > 0 ? (
                                     analytics.byCountData.map(d => (
                                         <BreakdownBar key={d.name} label={d.name} reps={d.reps} percentage={d.execution} colorClass="bg-secondary" />
                                     ))
                                 ) : (
-                                    <p className="text-muted-foreground text-center py-4">No data available.</p>
+                                    <p className="text-muted-foreground text-center py-4 text-sm">No data available.</p>
                                 )}
                             </div>
                         </div>
