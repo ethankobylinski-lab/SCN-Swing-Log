@@ -32,54 +32,75 @@ class DashboardViewModel: ObservableObject {
     @Published var errorMessage: String?
     
     private let client = SupabaseClientProvider.shared.client
+    private let targetUserId: UUID?
+    
+    init(targetUserId: UUID? = nil) {
+        self.targetUserId = targetUserId
+    }
     
     var userName: String {
+        // If targetUserId is set, we might need to fetch that user's name or pass it in.
+        // For now, if it's nil, use current user.
+        if let _ = targetUserId {
+             return "Player" // Placeholder, or we fetch user details
+        }
         let fullName = AuthService.shared.currentUser?.name ?? "Player"
         return fullName.components(separatedBy: " ").first ?? fullName
     }
     
-    var totalSessionsThisWeek: Int {
-        hittingSessionsThisWeek + pitchingSessionsThisWeek
-    }
-    
-    var combinedSessions: [CombinedSession] {
-        let hitting = recentHittingSessions.map { session in
-            CombinedSession(
-                id: session.id,
-                name: session.name,
-                date: session.date,
-                isHitting: true,
-                primaryStat: "\(Int(session.executionPercentage))%",
-                secondaryStat: "\(session.totalRepsAttempted) reps"
-            )
-        }
-        
-        let pitching = recentPitchingSessions.map { session in
-            CombinedSession(
-                id: session.id,
-                name: session.sessionName,
-                date: session.date,
-                isHitting: false,
-                primaryStat: "\(Int(session.strikePercentage))%",
-                secondaryStat: "\(session.totalPitches) pitches"
-            )
-        }
-        
-        return (hitting + pitching).sorted { $0.date > $1.date }
-    }
+    // ... existing properties ...
     
     func loadData() async {
-        guard let userId = AuthService.shared.userId else { return }
+        // Use targetUserId if available, else current user
+        let userId = targetUserId ?? AuthService.shared.currentUser?.id
+        guard let validId = userId else { return }
+        
+        // If viewing another user, we need their user object for Drills fetching (teamIds)
+        // For now, let's fetch hitting/pitching stats which depend only on ID.
+        // Drills/Goals might require more context.
         
         isLoading = true
         errorMessage = nil
         
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.loadHittingSessions(for: userId) }
-            group.addTask { await self.loadPitchingSessions(for: userId) }
+            group.addTask { await self.loadHittingSessions(for: validId) }
+            group.addTask { await self.loadPitchingSessions(for: validId) }
+            if self.targetUserId == nil, let user = AuthService.shared.currentUser {
+                // Only load personalized drills/goals for self for now, 
+                // unless we verify we can see other's goals.
+                group.addTask { await self.loadDrills(for: user) }
+                group.addTask { await self.loadGoals(for: validId) }
+            } else if let targetId = self.targetUserId {
+                 // Load goals for target user
+                 group.addTask { await self.loadGoals(for: targetId) }
+                 // Drills? We need the User object to get teamIds.
+                 // We can fetch the user first.
+            }
         }
         
         isLoading = false
+    }
+    
+    private func loadDrills(for user: User) async {
+        do {
+            let drills = try await DataService.shared.fetchDrills(teamIds: user.teamIds)
+            // Filter drills? Maybe assigned to me? 
+            // For now, show all team drills or implement assignment logic if specific table exists
+            // DrillAssignment table logic? 
+            // Let's just show all team drills for now as "Daily Drills"
+            assignedDrills = drills
+        } catch {
+            print("Error loading drills: \(error)")
+        }
+    }
+    
+    private func loadGoals(for userId: UUID) async {
+        do {
+            let goals = try await DataService.shared.fetchPersonalGoals(userId: userId)
+            activeGoals = goals.filter { $0.status == .active }
+        } catch {
+            print("Error loading goals: \(error)")
+        }
     }
     
     private func loadHittingSessions(for userId: UUID) async {

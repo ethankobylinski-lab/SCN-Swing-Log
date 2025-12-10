@@ -1,10 +1,14 @@
 import SwiftUI
 
 struct DashboardView: View {
-    @StateObject private var viewModel = DashboardViewModel()
+    @StateObject private var viewModel: DashboardViewModel
     @State private var showSessionPicker = false
     @State private var showHittingSheet = false
     @State private var showPitchingSheet = false
+    
+    init(userId: UUID? = nil) {
+        _viewModel = StateObject(wrappedValue: DashboardViewModel(targetUserId: userId))
+    }
     
     var body: some View {
         NavigationStack {
@@ -12,6 +16,16 @@ struct DashboardView: View {
                 VStack(spacing: AppSpacing.lg) {
                     // Welcome & Primary CTA
                     heroSection
+                    
+                    // Daily Drills
+                    if !viewModel.assignedDrills.isEmpty {
+                        drillsSection
+                    }
+                    
+                    // Goals
+                    if !viewModel.activeGoals.isEmpty {
+                        goalsSection
+                    }
                     
                     // Quick Stats
                     statsRow
@@ -137,6 +151,42 @@ struct DashboardView: View {
         }
     }
     
+    // MARK: - Drills Section
+    private var drillsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("DAILY DRILLS")
+                .font(AppTypography.caption)
+                .fontWeight(.bold)
+                .foregroundColor(AppColors.textTertiary)
+                .tracking(0.5)
+            
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AppSpacing.md) {
+                    ForEach(viewModel.assignedDrills) { drill in
+                        DrillCard(drill: drill)
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Goals Section
+    private var goalsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text("YOUR GOALS")
+                .font(AppTypography.caption)
+                .fontWeight(.bold)
+                .foregroundColor(AppColors.textTertiary)
+                .tracking(0.5)
+            
+            VStack(spacing: AppSpacing.sm) {
+                ForEach(viewModel.activeGoals) { goal in
+                    GoalStrip(goal: goal)
+                }
+            }
+        }
+    }
+
     // MARK: - Recent Activity
     private var recentActivitySection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -320,4 +370,81 @@ struct RecentSessionCard: View {
 
 #Preview {
     DashboardView()
+}
+
+// MARK: - Helper Views
+
+struct DrillCard: View {
+    let drill: Drill
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            HStack {
+                Image(systemName: "figure.baseball")
+                    .foregroundColor(AppColors.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(AppColors.textTertiary)
+            }
+            
+            Text(drill.name)
+                .font(AppTypography.callout)
+                .fontWeight(.semibold)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .foregroundColor(AppColors.textPrimary)
+            
+            Text(drill.category.rawValue.capitalized)
+                .font(AppTypography.caption)
+                .foregroundColor(AppColors.textSecondary)
+        }
+        .padding(AppSpacing.md)
+        .frame(width: 140, height: 120)
+        .background(AppColors.cardBackground)
+        .cornerRadius(AppCornerRadius.medium)
+        .shadow(color: Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
+    }
+}
+
+struct GoalStrip: View {
+    let goal: PersonalGoal
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(goal.description)
+                    .font(AppTypography.callout)
+                    .fontWeight(.medium)
+                    .foregroundColor(AppColors.textPrimary)
+                
+                Text("Target: \(goal.targetValue, format: .number) \(goal.metric)")
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textSecondary)
+            }
+            
+            Spacer()
+            
+            CircularProgress(progress: 0.65) // Mock progress
+                .frame(width: 32, height: 32)
+        }
+        .padding()
+        .background(AppColors.cardBackground)
+        .cornerRadius(AppCornerRadius.medium)
+    }
+}
+
+struct CircularProgress: View {
+    let progress: Double
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(AppColors.primary.opacity(0.2), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(AppColors.primary, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+    }
 }

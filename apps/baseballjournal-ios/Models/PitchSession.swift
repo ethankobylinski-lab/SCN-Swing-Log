@@ -145,6 +145,7 @@ struct PitchSession: Identifiable, Codable, Hashable {
     var sessionEndTime: Date?
     var restHoursRequired: Double?
     var pitchRecords: [PitchRecord]?
+    var analytics: PitchSessionAnalytics?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -164,6 +165,7 @@ struct PitchSession: Identifiable, Codable, Hashable {
         case sessionEndTime = "session_end_time"
         case restHoursRequired = "rest_hours_required"
         case pitchRecords = "pitch_records"
+        case analytics
     }
     
     // Computed properties
@@ -221,4 +223,48 @@ struct PitchSessionInsert: Codable {
         case totalPitches = "total_pitches"
         case sessionStartTime = "session_start_time"
     }
+}
+
+// MARK: - Pitch Session Analytics
+struct PitchSessionAnalytics: Codable, Hashable {
+    var strikePct: Double
+    var accuracyHitRate: Double
+    var accuracyProximityAvg: Double
+    var pitchTypeMetrics: [PitchTypeMetrics]
+    var missPattern: MissPattern
+    var situational: SituationalMetrics
+    var trend: TrendMetrics
+    var commandScore: Double
+    var insights: [String]
+}
+
+struct MissPattern: Codable, Hashable {
+    var missUpPct: Double
+    var missDownPct: Double
+    var missArmSidePct: Double
+    var missGloveSidePct: Double
+    var avgMissDistance: Double
+}
+
+struct SituationalMetrics: Codable, Hashable {
+    var firstPitchStrikePct: Double
+    var behindInCountStrikePct: Double
+    var behindInCountAccuracy: Double
+}
+
+struct TrendMetrics: Codable, Hashable {
+    var earlyAccuracy: Double
+    var lateAccuracy: Double
+}
+
+struct PitchTypeMetrics: Codable, Hashable {
+    var pitchTypeId: UUID
+    var pitchTypeName: String
+    var count: Int
+    var strikePct: Double
+    var accuracyHitRate: Double
+    var accuracyProximityAvg: Double
+    var accuracyInchesAvg: Double?
+    var accuracyInchesMedian: Double?
+    var accuracyInchesMax: Double?
 }
